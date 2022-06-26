@@ -9,7 +9,7 @@ defmodule Siblings.MixProject do
       app: @app,
       name: "Siblings",
       version: @version,
-      elixir: "~> 1.14-dev",
+      elixir: "~> 1.14.0-dev",
       compilers: compilers(Mix.env()),
       elixirc_paths: elixirc_paths(Mix.env()),
       consolidate_protocols: Mix.env() not in [:dev, :test],
