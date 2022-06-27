@@ -12,7 +12,7 @@ defmodule SiblingsTest do
 
     assert [{:undefined, _, :worker, [Siblings.InternalWorker]}] =
              DynamicSupervisor.which_children(
-               {:via, PartitionSupervisor, {Siblings, {Siblings.Test.Worker, "MyWorker"}}}
+               {:via, PartitionSupervisor, {Siblings, Siblings.Test.Worker}}
              )
 
     assert_receive :s1_s2, 1_000
@@ -22,7 +22,7 @@ defmodule SiblingsTest do
 
     assert [] ==
              DynamicSupervisor.which_children(
-               {:via, PartitionSupervisor, {Siblings, {Siblings.Test.Worker, "MyWorker"}}}
+               {:via, PartitionSupervisor, {Siblings, Siblings.Test.Worker}}
              )
   end
 end

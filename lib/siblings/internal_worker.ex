@@ -2,7 +2,7 @@ defmodule Siblings.InternalWorker do
   @moduledoc false
 
   use GenServer
-  use Boundary
+  use Boundary, exports: [State]
   use Telemetria
 
   require Logger
@@ -42,8 +42,8 @@ defmodule Siblings.InternalWorker do
     {:ok, state}
   end
 
-  @spec state :: State.t()
-  def state, do: GenServer.call(__MODULE__, :state)
+  @spec state(GenServer.name()) :: State.t()
+  def state(server), do: GenServer.call(server, :state)
 
   @impl GenServer
   def handle_call(:state, _, state), do: {:reply, state, state}
