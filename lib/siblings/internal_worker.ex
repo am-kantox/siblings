@@ -82,10 +82,10 @@ defmodule Siblings.InternalWorker do
   defp schedule_work(_interval), do: :ok
 
   # @spec start_fsm(State.t()) :: State.t()
-  defp start_fsm(%State{fsm: nil} = state) do
-    fsm_impl =
-      if function_exported?(state.worker, :fsm, 0), do: state.worker.fsm(), else: state.worker
+  defp start_fsm(%State{worker: worker, fsm: nil} = state) do
+    Code.ensure_loaded!(worker)
 
+    fsm_impl = if function_exported?(worker, :fsm, 0), do: worker.fsm(), else: worker
     {:ok, fsm} = fsm_impl.start_link(state.initial_payload)
     start_fsm(%State{state | fsm: {Process.monitor(fsm), fsm}})
   end

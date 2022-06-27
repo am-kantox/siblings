@@ -3,22 +3,22 @@ defmodule SiblingsTest do
   doctest Siblings
   doctest Siblings.Worker
 
-  import ExUnit.CaptureLog
-
-  def setup_all do
+  setup_all do
+    %{siblings: start_supervised!(Siblings)}
   end
 
   test "FSM" do
-    start_supervised(Siblings)
+    Siblings.start_child(Siblings.Test.Worker, "MyWorker", %{pid: self()}, interval: 100)
 
-    log =
-      capture_log(fn ->
-        Siblings.start_child(Siblings.Test.Worker, "MyWorker", %{foo: :bar}, interval: 100)
-        Process.sleep(1_000)
-      end)
+    assert [{:undefined, _, :worker, [Siblings.InternalWorker]}] =
+             DynamicSupervisor.which_children(
+               {:via, PartitionSupervisor, {Siblings, {Siblings.Test.Worker, "MyWorker"}}}
+             )
 
-    assert log =~ ~r/PERFORM 1: {:s1, "MyWorker", %{foo: :bar}}/
-    assert log =~ ~r/PERFORM 2: {:s2, "MyWorker", %{foo: :bar}}/
+    assert_receive :s1_s2, 1_000
+    assert_receive :s2_end, 1_000
+
+    Process.sleep(100)
 
     assert [] ==
              DynamicSupervisor.which_children(
