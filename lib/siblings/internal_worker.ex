@@ -37,8 +37,9 @@ defmodule Siblings.InternalWorker do
 
   @impl GenServer
   def init(%State{} = state) do
+    state = start_fsm(state)
     schedule_work(state.interval)
-    {:ok, start_fsm(state)}
+    {:ok, state}
   end
 
   @spec state :: State.t()
@@ -80,9 +81,12 @@ defmodule Siblings.InternalWorker do
   defp schedule_work(interval) when interval > 0, do: Process.send_after(self(), :work, interval)
   defp schedule_work(_interval), do: :ok
 
-  @spec start_fsm(State.t()) :: State.t()
+  # @spec start_fsm(State.t()) :: State.t()
   defp start_fsm(%State{fsm: nil} = state) do
-    {:ok, fsm} = state.worker.fsm.start_link(state.initial_payload)
+    fsm_impl =
+      if function_exported?(state.worker, :fsm, 0), do: state.worker.fsm(), else: state.worker
+
+    {:ok, fsm} = fsm_impl.start_link(state.initial_payload)
     start_fsm(%State{state | fsm: {Process.monitor(fsm), fsm}})
   end
 
@@ -91,7 +95,10 @@ defmodule Siblings.InternalWorker do
     state
   end
 
-  @spec safe_perform(State.t()) :: {:transition, Finitomata.Transition.event()} | :noop
+  # @spec safe_perform(State.t()) ::
+  #         {:transition, Finitomata.Transition.event(), Finitomata.event_payload()}
+  #         | :noop
+  #         | {:error, String.t()}
   @telemetria level: :info
   defp safe_perform(%State{fsm: {_ref, pid}} = state) do
     %Finitomata.State{current: current, payload: payload} = GenServer.call(pid, :state)
@@ -101,9 +108,6 @@ defmodule Siblings.InternalWorker do
       case err do
         %{__exception__: true} ->
           {:error, Exception.message(err)}
-
-        _ ->
-          {:error, RuntimeError.exception("Worker.perform/2 raised " <> inspect(err))}
       end
   end
 end

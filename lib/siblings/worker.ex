@@ -33,6 +33,7 @@ defmodule Siblings.Worker do
   The `Finitomata` FSM implementation module.
 
   It will be used internally to carry the state of FSM.
+  If not implemented, this module itself will be considered an FSM implementation.
   """
   @callback fsm :: module()
 
@@ -41,5 +42,5 @@ defmodule Siblings.Worker do
   """
   @callback reinit(pid()) :: :ok
 
-  @optional_callbacks reinit: 1
+  @optional_callbacks fsm: 0, reinit: 1
 end
