@@ -8,7 +8,11 @@ defmodule SiblingsTest do
   end
 
   test "FSM" do
-    Siblings.start_child(Siblings.Test.Worker, "MyWorker", %{pid: self()}, interval: 100)
+    {:ok, pid} =
+      Siblings.start_child(Siblings.Test.Worker, "MyWorker", %{pid: self()}, interval: 200)
+
+    assert {:error, {:already_started, ^pid}} =
+             Siblings.start_child(Siblings.Test.Worker, "MyWorker", %{pid: self()}, interval: 200)
 
     assert [%Siblings.InternalWorker.State{id: "MyWorker"}] = Siblings.children()
 

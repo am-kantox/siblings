@@ -52,7 +52,7 @@ defmodule Siblings.InternalWorker do
     {:ok, state}
   end
 
-  @spec state(GenServer.name()) :: State.t()
+  @spec state(pid | GenServer.name()) :: State.t()
   def state(server), do: GenServer.call(server, :state)
 
   @impl GenServer

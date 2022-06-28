@@ -33,7 +33,7 @@ defmodule Siblings do
   def init(state), do: {:ok, state}
 
   @doc false
-  @spec lookup :: nil | pid()
+  @spec lookup :: nil | pid() | atom()
   def lookup(name \\ default_fqn()) do
     fqn = Siblings.Lookup.lookup_fqn(name)
 
@@ -65,29 +65,61 @@ defmodule Siblings do
           DynamicSupervisor.on_start_child()
   def start_child(worker, id, payload, opts \\ []) do
     {name, opts} = Keyword.pop(opts, :name, default_fqn())
-    {shutdown, opts} = Keyword.pop(opts, :shutdown, 5_000)
-    opts = Keyword.put(opts, :lookup, Siblings.lookup(name))
 
-    spec = %{
-      id: worker,
-      start: {InternalWorker, :start_link, [worker, id, payload, opts]},
-      restart: :transient,
-      shutdown: shutdown
-    }
+    case find_child(name, id, true) do
+      {pid, _child} ->
+        {:error, {:already_started, pid}}
 
-    DynamicSupervisor.start_child({:via, PartitionSupervisor, {name, {worker, id}}}, spec)
+      nil ->
+        {shutdown, opts} = Keyword.pop(opts, :shutdown, 5_000)
+        opts = Keyword.put(opts, :lookup, Siblings.lookup(name))
+
+        spec = %{
+          id: worker,
+          start: {InternalWorker, :start_link, [worker, id, payload, opts]},
+          restart: :transient,
+          shutdown: shutdown
+        }
+
+        DynamicSupervisor.start_child({:via, PartitionSupervisor, {name, {worker, id}}}, spec)
+    end
   end
 
   @doc """
-  Returns the children with the given `id`.
+  Returns the child with the given `id`, or `nil` if there is none.
   """
-  @spec children_by_id(module(), Worker.id()) :: [State.t()]
-  def children_by_id(name \\ default_fqn(), id) do
-    for {_partition_id, pid, :supervisor, [DynamicSupervisor]} <-
-          PartitionSupervisor.which_children(name),
-        {_name, pid, :worker, [InternalWorker]} <- DynamicSupervisor.which_children(pid),
-        %InternalWorker.State{id: ^id} = state <- [InternalWorker.state(pid)],
-        do: state
+  @spec find_child(module(), Worker.id(), boolean()) :: nil | State.t() | {pid(), State.t()}
+  def find_child(name \\ default_fqn(), id, with_pid? \\ false),
+    do: do_find_child(lookup(), name, id, with_pid?)
+
+  @spec do_find_child(nil | pid() | atom(), module(), Worker.id(), boolean()) ::
+          nil | State.t() | {pid(), State.t()}
+  defp do_find_child(nil, name, id, with_pid?) do
+    children =
+      for {_partition_id, dyn_sup_pid, :supervisor, [DynamicSupervisor]} <-
+            PartitionSupervisor.which_children(name),
+          {_name, pid, :worker, [InternalWorker]} <-
+            DynamicSupervisor.which_children(dyn_sup_pid),
+          %InternalWorker.State{id: ^id} = state <- [InternalWorker.state(pid)],
+          do: {pid, state}
+
+    case children do
+      [{pid, child}] -> if with_pid?, do: {pid, child}, else: child
+      [] -> nil
+    end
+  end
+
+  defp do_find_child(lookup, _name, id, with_pid?) when is_pid(lookup) or is_atom(lookup) do
+    lookup
+    |> Lookup.get(id)
+    |> then(fn
+      nil ->
+        nil
+
+      pid when is_pid(pid) ->
+        state = InternalWorker.state(pid)
+        if with_pid?, do: {pid, state}, else: state
+    end)
   end
 
   @doc """
@@ -96,20 +128,18 @@ defmodule Siblings do
   @spec children(module()) :: [State.t()]
   def children(name \\ default_fqn()), do: do_children(lookup(), name)
 
-  @spec do_children(boolean(), module()) :: [State.t()]
+  @spec do_children(nil | pid() | atom(), module()) :: [State.t()]
   defp do_children(nil, name) do
-    for {_partition_id, pid, :supervisor, [DynamicSupervisor]} <-
+    for {_partition_id, dyn_sup_pid, :supervisor, [DynamicSupervisor]} <-
           PartitionSupervisor.which_children(name),
-        {_name, pid, :worker, [InternalWorker]} <- DynamicSupervisor.which_children(pid),
+        {_name, pid, :worker, [InternalWorker]} <- DynamicSupervisor.which_children(dyn_sup_pid),
         do: InternalWorker.state(pid)
   end
 
-  defp do_children(lookup, name) when is_atom(lookup) do
-    name
-    |> lookup.lookup_fqn()
-    |> lookup.all()
+  defp do_children(lookup, _name) when is_pid(lookup) or is_atom(lookup) do
+    lookup
+    |> Lookup.all()
     |> Map.values()
-    |> List.flatten()
     |> Enum.map(&InternalWorker.state/1)
   end
 
