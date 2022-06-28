@@ -1,19 +1,25 @@
 defmodule Siblings.InternalWorker do
-  @moduledoc false
-
-  use GenServer
-  use Boundary, deps: [Siblings.Lookup], exports: [State]
-  use Telemetria
+  @moduledoc """
+  The internal process to manage `Siblings.Worker` subsequent runs
+  along with its _FSM_.
+  """
 
   require Logger
 
+  alias Siblings.Telemetria, as: T
   alias Siblings.Worker, as: W
+
+  use GenServer
+  use Boundary, deps: [Siblings.Lookup], exports: [State]
+  if T.enabled?(), do: use(Telemetria)
 
   @typedoc "Allowed options in a call to `start_link/4`"
   @type options :: [{:interval, non_neg_integer()} | {:name, GenServer.name()}]
 
   defmodule State do
-    @moduledoc false
+    @moduledoc """
+    The state of the worker.
+    """
     @type t :: %{
             worker: module(),
             fsm: {reference(), pid()},
@@ -45,6 +51,7 @@ defmodule Siblings.InternalWorker do
     end
   end
 
+  @doc false
   @spec start_link(module(), W.id(), W.payload(), opts :: options()) :: GenServer.on_start()
   def start_link(worker, id, payload, opts \\ []) do
     {interval, opts} = Keyword.pop(opts, :interval, 5_000)
@@ -63,6 +70,7 @@ defmodule Siblings.InternalWorker do
     )
   end
 
+  @doc false
   @impl GenServer
   def init(%State{} = state) do
     state = start_fsm(state)
@@ -72,12 +80,15 @@ defmodule Siblings.InternalWorker do
     {:ok, state}
   end
 
+  @doc false
   @spec state(pid | GenServer.name()) :: State.t()
   def state(server), do: GenServer.call(server, :state)
 
+  @doc false
   @impl GenServer
   def handle_call(:state, _, state), do: {:reply, state, state}
 
+  @doc false
   @impl GenServer
   def handle_info(:work, %State{fsm: {_ref, pid}} = state) do
     case safe_perform(state) do
@@ -95,6 +106,7 @@ defmodule Siblings.InternalWorker do
     {:noreply, state}
   end
 
+  @doc false
   @impl GenServer
   def handle_info({:DOWN, ref, :process, pid, :normal}, %State{fsm: {ref, pid}} = state) do
     Logger.info("FSM Shut Us Down")
@@ -102,20 +114,24 @@ defmodule Siblings.InternalWorker do
     {:stop, :normal, state}
   end
 
+  @doc false
   @impl GenServer
   def handle_info({:DOWN, ref, :process, pid, reason}, %State{fsm: {ref, pid}} = state) do
     Logger.warn("FSM Down (reason: #{inspect(reason)}), IMPLEMENT CALLBACK TO REINIT")
     {:noreply, start_fsm(state)}
   end
 
+  @doc false
   @impl GenServer
   def terminate(:normal, state),
     do: update_lookup(:del, state.lookup, state.id)
 
+  @doc false
   @spec schedule_work(interval :: non_neg_integer()) :: reference()
   defp schedule_work(interval) when interval > 0, do: Process.send_after(self(), :work, interval)
   defp schedule_work(_interval), do: :ok
 
+  @doc false
   # @spec start_fsm(State.t()) :: State.t()
   defp start_fsm(%State{worker: worker, fsm: nil} = state) do
     Code.ensure_loaded!(worker)
@@ -130,16 +146,15 @@ defmodule Siblings.InternalWorker do
     state
   end
 
+  @doc false
   @spec update_lookup(:put | :del, nil | GenServer.name(), W.id()) :: :ok
   defp update_lookup(_action, nil, _id), do: :ok
   defp update_lookup(:put, lookup, id), do: Siblings.Lookup.put(lookup, id, self())
   defp update_lookup(:del, lookup, id), do: Siblings.Lookup.del(lookup, id)
 
-  # @spec safe_perform(State.t()) ::
-  #         {:transition, Finitomata.Transition.event(), Finitomata.event_payload()}
-  #         | :noop
-  #         | {:error, String.t()}
-  @telemetria level: :info
+  @doc false
+  if T.enabled?(), do: @telemetria(level: :info)
+
   defp safe_perform(%State{fsm: {_ref, pid}} = state) do
     %Finitomata.State{current: current, payload: payload} = GenServer.call(pid, :state)
     state.worker.perform(current, state.id, payload)

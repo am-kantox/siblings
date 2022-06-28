@@ -1,10 +1,17 @@
 defmodule Siblings do
-  @moduledoc """
-  `Siblings` is the bolerplate to effectively handle many long-lived entities
-  of the same shape, driven by FSM.
+  from_readme =
+    "README.md"
+    |> File.read!()
+    |> String.split("\n## Usage")
+    |> Enum.at(1)
+    |> String.split("\n## ")
+    |> Enum.at(0)
 
-  Once started,
-  """
+  @moduledoc """
+             Bolerplate to effectively handle many long-lived entities
+             of the same shape, driven by FSM.
+
+             """ <> from_readme
 
   use Supervisor
   use Boundary, deps: [PartitionSupervisor], exports: [Worker]

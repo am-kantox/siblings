@@ -2,7 +2,7 @@ defmodule Siblings.MixProject do
   use Mix.Project
 
   @app :siblings
-  @version "0.1.0"
+  @version "0.2.0"
 
   def project do
     [
@@ -38,7 +38,7 @@ defmodule Siblings.MixProject do
   defp deps do
     [
       {:finitomata, "~> 0.4"},
-      {:telemetria, "~> 0.12"},
+      {:telemetria, "~> 0.12", optional: true},
       {:boundary, "~> 0.9", runtime: false},
       # dev / test
       {:credo, "~> 1.0", only: [:dev, :ci]},
@@ -86,7 +86,15 @@ defmodule Siblings.MixProject do
       source_url: "https://github.com/am-kantox/#{@app}",
       assets: "stuff/images",
       extras: ~w[README.md],
-      groups_for_modules: [],
+      groups_for_modules: [
+        # Siblings,
+        # Siblings.Worker,
+
+        Internals: [
+          Siblings.InternalWorker,
+          Siblings.InternalWorker.State
+        ]
+      ],
       before_closing_body_tag: &before_closing_body_tag/1
     ]
   end
