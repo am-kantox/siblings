@@ -82,7 +82,7 @@ defmodule Siblings.MixProject do
       main: "readme",
       source_ref: "v#{@version}",
       canonical: "http://hexdocs.pm/#{@app}",
-      # logo: "stuff/#{@app}-48x48.png",
+      logo: "stuff/#{@app}-48x48.png",
       source_url: "https://github.com/am-kantox/#{@app}",
       assets: "stuff/images",
       extras: ~w[README.md],
