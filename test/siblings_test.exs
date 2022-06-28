@@ -10,19 +10,13 @@ defmodule SiblingsTest do
   test "FSM" do
     Siblings.start_child(Siblings.Test.Worker, "MyWorker", %{pid: self()}, interval: 100)
 
-    assert [{:undefined, _, :worker, [Siblings.InternalWorker]}] =
-             DynamicSupervisor.which_children(
-               {:via, PartitionSupervisor, {Siblings, Siblings.Test.Worker}}
-             )
+    assert [%Siblings.InternalWorker.State{id: "MyWorker"}] = Siblings.children()
 
     assert_receive :s1_s2, 1_000
     assert_receive :s2_end, 1_000
 
     Process.sleep(100)
 
-    assert [] ==
-             DynamicSupervisor.which_children(
-               {:via, PartitionSupervisor, {Siblings, Siblings.Test.Worker}}
-             )
+    assert [] == Siblings.children()
   end
 end

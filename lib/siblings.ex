@@ -7,25 +7,25 @@ defmodule Siblings do
   """
 
   use Supervisor
-  use Boundary, exports: [Worker]
+  use Boundary, deps: [PartitionSupervisor], exports: [Worker]
 
-  alias Siblings.{InternalWorker, Lookup, Worker}
+  alias Siblings.{InternalWorker, InternalWorker.State, Lookup, Worker}
 
   @doc """
   Starts the supervision subtree, holding the `PartitionSupervisor`.
   """
   def start_link(opts \\ []) do
-    name = Keyword.get(opts, :name, __MODULE__)
+    name = Keyword.get(opts, :name, default_fqn())
 
     lookup =
       case Keyword.get(opts, :lookup, :agent) do
-        :agent -> [Lookup]
+        :agent -> [{Lookup, name: name}]
         _ -> []
       end
 
     children = [{PartitionSupervisor, child_spec: DynamicSupervisor, name: name} | lookup]
 
-    Supervisor.start_link(children, strategy: :one_for_one, name: Siblings.Supervisor)
+    Supervisor.start_link(children, strategy: :one_for_one, name: sup_fqn(name))
   end
 
   @doc false
@@ -33,12 +33,30 @@ defmodule Siblings do
   def init(state), do: {:ok, state}
 
   @doc false
-  @spec has_lookup? :: boolean()
-  def has_lookup? do
-    Siblings.Supervisor
-    |> Supervisor.which_children()
-    |> Enum.any?(&match?({_name, _pid, :worker, [Lookup]}, &1))
+  @spec lookup :: nil | pid()
+  def lookup(name \\ default_fqn()) do
+    fqn = Siblings.Lookup.lookup_fqn(name)
+
+    fqn
+    |> Process.whereis()
+    |> is_pid()
+    |> if do
+      fqn
+    else
+      name
+      |> sup_fqn()
+      |> Supervisor.which_children()
+      |> Enum.find(&match?({_name, _pid, :worker, [Lookup]}, &1))
+      |> then(fn
+        {_name, pid, :worker, [Lookup]} -> pid
+        _ -> nil
+      end)
+    end
   end
+
+  @doc false
+  @spec lookup? :: boolean()
+  def lookup?, do: not is_nil(lookup())
 
   @doc """
   Starts the supervised child under the `PartitionSupervisor`.
@@ -46,8 +64,9 @@ defmodule Siblings do
   @spec start_child(module(), Worker.id(), Worker.payload(), InternalWorker.options()) ::
           DynamicSupervisor.on_start_child()
   def start_child(worker, id, payload, opts \\ []) do
-    {name, opts} = Keyword.pop(opts, :name, __MODULE__)
+    {name, opts} = Keyword.pop(opts, :name, default_fqn())
     {shutdown, opts} = Keyword.pop(opts, :shutdown, 5_000)
+    opts = Keyword.put(opts, :lookup, Siblings.lookup(name))
 
     spec = %{
       id: worker,
@@ -56,35 +75,49 @@ defmodule Siblings do
       shutdown: shutdown
     }
 
-    DynamicSupervisor.start_child({:via, PartitionSupervisor, {name, worker}}, spec)
+    DynamicSupervisor.start_child({:via, PartitionSupervisor, {name, {worker, id}}}, spec)
   end
 
   @doc """
-  Returns the child with the given `id` or `nil` if there is no such child.
+  Returns the children with the given `id`.
   """
-  @spec find_child(module(), module(), Worker.id()) :: State.t() | nil
-  def find_child(name \\ __MODULE__, worker, id) do
-    {:via, PartitionSupervisor, {name, worker}}
-    |> DynamicSupervisor.which_children()
-    |> Enum.find(fn
-      {_name, pid, :worker, [InternalWorker]} ->
-        match?(%InternalWorker.State{id: ^id}, InternalWorker.state(pid))
-
-      _ ->
-        false
-    end)
+  @spec children_by_id(module(), Worker.id()) :: [State.t()]
+  def children_by_id(name \\ default_fqn(), id) do
+    for {_partition_id, pid, :supervisor, [DynamicSupervisor]} <-
+          PartitionSupervisor.which_children(name),
+        {_name, pid, :worker, [InternalWorker]} <- DynamicSupervisor.which_children(pid),
+        %InternalWorker.State{id: ^id} = state <- [InternalWorker.state(pid)],
+        do: state
   end
 
   @doc """
   Returns the list of currently managed children.
   """
-  @spec children(module(), module()) :: [State.t()]
-  def children(name \\ __MODULE__, worker) do
-    {:via, PartitionSupervisor, {name, worker}}
-    |> DynamicSupervisor.which_children()
-    |> Enum.flat_map(fn
-      {_name, pid, :worker, [InternalWorker]} -> [InternalWorker.state(pid)]
-      _ -> []
-    end)
+  @spec children(module()) :: [State.t()]
+  def children(name \\ default_fqn()), do: do_children(lookup(), name)
+
+  @spec do_children(boolean(), module()) :: [State.t()]
+  defp do_children(nil, name) do
+    for {_partition_id, pid, :supervisor, [DynamicSupervisor]} <-
+          PartitionSupervisor.which_children(name),
+        {_name, pid, :worker, [InternalWorker]} <- DynamicSupervisor.which_children(pid),
+        do: InternalWorker.state(pid)
   end
+
+  defp do_children(lookup, name) when is_atom(lookup) do
+    name
+    |> lookup.lookup_fqn()
+    |> lookup.all()
+    |> Map.values()
+    |> List.flatten()
+    |> Enum.map(&InternalWorker.state/1)
+  end
+
+  @spec default_fqn :: module()
+  @doc false
+  def default_fqn, do: __MODULE__
+
+  @spec sup_fqn(module()) :: module()
+  @doc false
+  defp sup_fqn(name), do: Module.concat(name, Supervisor)
 end

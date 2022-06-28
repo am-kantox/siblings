@@ -2,7 +2,7 @@ defmodule Siblings.InternalWorker do
   @moduledoc false
 
   use GenServer
-  use Boundary, exports: [State]
+  use Boundary, deps: [Siblings.Lookup], exports: [State]
   use Telemetria
 
   require Logger
@@ -17,20 +17,28 @@ defmodule Siblings.InternalWorker do
     @type t :: %{
             worker: module(),
             fsm: {reference(), pid()},
+            lookup: nil | GenServer.name(),
             id: W.id(),
             initial_payload: W.payload(),
             interval: non_neg_integer()
           }
-    defstruct ~w|worker fsm id initial_payload interval|a
+    defstruct ~w|worker fsm lookup id initial_payload interval|a
   end
 
   @spec start_link(module(), W.id(), W.payload(), opts :: options()) :: GenServer.on_start()
   def start_link(worker, id, payload, opts \\ []) do
     {interval, opts} = Keyword.pop(opts, :interval, 5_000)
+    {lookup, opts} = Keyword.pop(opts, :lookup)
 
     GenServer.start_link(
       __MODULE__,
-      %State{worker: worker, id: id, initial_payload: payload, interval: interval},
+      %State{
+        worker: worker,
+        lookup: lookup,
+        id: id,
+        initial_payload: payload,
+        interval: interval
+      },
       opts
     )
   end
@@ -38,6 +46,8 @@ defmodule Siblings.InternalWorker do
   @impl GenServer
   def init(%State{} = state) do
     state = start_fsm(state)
+
+    update_lookup(:put, state.lookup, state.id)
     schedule_work(state.interval)
     {:ok, state}
   end
@@ -72,10 +82,15 @@ defmodule Siblings.InternalWorker do
     {:stop, :normal, state}
   end
 
+  @impl GenServer
   def handle_info({:DOWN, ref, :process, pid, reason}, %State{fsm: {ref, pid}} = state) do
     Logger.warn("FSM Down (reason: #{inspect(reason)}), IMPLEMENT CALLBACK TO REINIT")
     {:noreply, start_fsm(state)}
   end
+
+  @impl GenServer
+  def terminate(:normal, state),
+    do: update_lookup(:del, state.lookup, state.id)
 
   @spec schedule_work(interval :: non_neg_integer()) :: reference()
   defp schedule_work(interval) when interval > 0, do: Process.send_after(self(), :work, interval)
@@ -94,6 +109,11 @@ defmodule Siblings.InternalWorker do
     if function_exported?(state.worker, :reinit, 1), do: state.worker.reinit(pid)
     state
   end
+
+  @spec update_lookup(:put | :del, nil | GenServer.name(), W.id()) :: :ok
+  defp update_lookup(_action, nil, _id), do: :ok
+  defp update_lookup(:put, lookup, id), do: Siblings.Lookup.put(lookup, id, self())
+  defp update_lookup(:del, lookup, id), do: Siblings.Lookup.del(lookup, id)
 
   # @spec safe_perform(State.t()) ::
   #         {:transition, Finitomata.Transition.event(), Finitomata.event_payload()}
