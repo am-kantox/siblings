@@ -23,6 +23,26 @@ defmodule Siblings.InternalWorker do
             interval: non_neg_integer()
           }
     defstruct ~w|worker fsm lookup id initial_payload interval|a
+
+    defimpl Inspect do
+      @moduledoc false
+      import Inspect.Algebra
+
+      def inspect(%State{fsm: nil} = state, opts) do
+        concat(["#Sibling<", to_doc([id: state.id, initialized: false], opts), ">"])
+      end
+
+      def inspect(%State{fsm: {_, fsm_pid}} = state, opts) do
+        doc = [
+          id: state.id,
+          fsm: GenServer.call(fsm_pid, :state),
+          worker: Function.capture(state.worker, :perform, 3),
+          interval: state.interval
+        ]
+
+        concat(["#Sibling<", to_doc(doc, opts), ">"])
+      end
+    end
   end
 
   @spec start_link(module(), W.id(), W.payload(), opts :: options()) :: GenServer.on_start()
