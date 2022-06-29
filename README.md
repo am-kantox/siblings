@@ -14,7 +14,7 @@ polling the external resources. Once the bid condition is met,
 the bid gets traded.
 
 With `Siblings`, one should implement `c:Siblings.Worker.perform/3`
-callback, doind actual work and returning either `:ok` if no action
+callback, doing actual work and returning either `:ok` if no action
 should be taken, or `{:transition, event, payload}` to initiate the
 _FSM_ transition. When the _FSM_ get exhausted (reaches its end state,)
 both the performing process _and_ the _FSM_ itself do shut down.
