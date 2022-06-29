@@ -7,7 +7,7 @@
 `Siblings` is a library to painlessly manage many uniform processes,
 all having the lifecycle _and_ the _FSM_ behind.
 
-Consider the srtvice, that polls the market rates from several
+Consider the service, that polls the market rates from several
 diffferent sources, allowing semi-automated trading based
 on predefined conditions. For each bid, the process is to be spawn,
 polling the external resources. Once the bid condition is met,
