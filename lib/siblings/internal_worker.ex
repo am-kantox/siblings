@@ -10,25 +10,23 @@ defmodule Siblings.InternalWorker do
   alias Siblings.Worker, as: W
 
   use GenServer
-  use Boundary, deps: [Siblings.Lookup], exports: [State]
+  use Boundary, deps: [Siblings.Lookup, Siblings.Telemetria], exports: [State]
   if T.enabled?(), do: use(Telemetria)
-
-  @typedoc "Allowed options in a call to `start_link/4`"
-  @type options :: [{:interval, non_neg_integer()} | {:name, GenServer.name()}]
 
   defmodule State do
     @moduledoc """
     The state of the worker.
     """
     @type t :: %{
+            id: W.id(),
+            initial_payload: W.payload(),
             worker: module(),
             fsm: {reference(), pid()},
             lookup: nil | GenServer.name(),
-            id: W.id(),
-            initial_payload: W.payload(),
+            offload: nil | (t() -> :ok),
             interval: non_neg_integer()
           }
-    defstruct ~w|worker fsm lookup id initial_payload interval|a
+    defstruct ~w|id initial_payload worker fsm lookup offload interval|a
 
     defimpl Inspect do
       @moduledoc false
@@ -51,19 +49,28 @@ defmodule Siblings.InternalWorker do
     end
   end
 
+  @typedoc "Allowed options in a call to `start_link/4`"
+  @type options :: [
+          {:interval, non_neg_integer()}
+          | {:name, GenServer.name()}
+          | {:offload, (State.t() -> :ok)}
+        ]
+
   @doc false
   @spec start_link(module(), W.id(), W.payload(), opts :: options()) :: GenServer.on_start()
   def start_link(worker, id, payload, opts \\ []) do
     {interval, opts} = Keyword.pop(opts, :interval, 5_000)
     {lookup, opts} = Keyword.pop(opts, :lookup)
+    {offload, opts} = Keyword.pop(opts, :offload)
 
     GenServer.start_link(
       __MODULE__,
       %State{
-        worker: worker,
-        lookup: lookup,
         id: id,
         initial_payload: payload,
+        worker: worker,
+        lookup: lookup,
+        offload: offload,
         interval: interval
       },
       opts
@@ -125,6 +132,10 @@ defmodule Siblings.InternalWorker do
   @impl GenServer
   def terminate(:normal, state),
     do: update_lookup(:del, state.lookup, state.id)
+
+  @impl GenServer
+  def terminate(_, state),
+    do: if(is_function(state.offload, 1), do: state.offload.(state))
 
   @doc false
   @spec schedule_work(interval :: non_neg_integer()) :: reference()
