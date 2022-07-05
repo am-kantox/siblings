@@ -24,9 +24,10 @@ defmodule Siblings.InternalWorker do
             fsm: {reference(), pid()},
             lookup: nil | GenServer.name(),
             offload: nil | (t() -> :ok),
-            interval: non_neg_integer()
+            interval: non_neg_integer(),
+            schedule: reference()
           }
-    defstruct ~w|id initial_payload worker fsm lookup offload interval|a
+    defstruct ~w|id initial_payload worker fsm lookup offload interval schedule|a
 
     defimpl Inspect do
       @moduledoc false
@@ -59,9 +60,11 @@ defmodule Siblings.InternalWorker do
   @doc false
   @spec start_link(module(), W.id(), W.payload(), opts :: options()) :: GenServer.on_start()
   def start_link(worker, id, payload, opts \\ []) do
-    {interval, opts} = Keyword.pop(opts, :interval, 5_000)
+    {interval, opts} = Keyword.pop(opts, :interval)
     {lookup, opts} = Keyword.pop(opts, :lookup)
     {offload, opts} = Keyword.pop(opts, :offload)
+
+    interval = if is_integer(interval) and interval >= 0, do: interval, else: 5_000
 
     GenServer.start_link(
       __MODULE__,
@@ -81,10 +84,8 @@ defmodule Siblings.InternalWorker do
   @impl GenServer
   def init(%State{} = state) do
     state = start_fsm(state)
-
     update_lookup(:put, state.lookup, state.id)
-    schedule_work(state.interval)
-    {:ok, state}
+    {:ok, %State{state | schedule: schedule_work(state.interval)}}
   end
 
   @doc false
@@ -94,6 +95,31 @@ defmodule Siblings.InternalWorker do
   @doc false
   @impl GenServer
   def handle_call(:state, _, state), do: {:reply, state, state}
+
+  @doc false
+  @impl GenServer
+  def handle_call({:message, message}, _, state) do
+    {result, state} =
+      if function_exported?(state.worker, :on_call, 2),
+        do: state.worker.on_call(message, state),
+        else: {{:error, :callback_not_implemented}, state}
+
+    {:reply, result, state}
+  end
+
+  @doc false
+  @impl GenServer
+  def handle_cast({:reset, interval}, state) when is_integer(interval) and interval > 0 do
+    if is_reference(state.schedule), do: Process.cancel_timer(state.schedule)
+    {:noreply, %State{state | interval: interval, schedule: schedule_work(interval)}}
+  end
+
+  @doc false
+  @impl GenServer
+  def handle_cast({:reset, 0}, state) do
+    schedule_work(0)
+    {:noreply, state}
+  end
 
   @doc false
   @impl GenServer
@@ -109,8 +135,7 @@ defmodule Siblings.InternalWorker do
         Logger.warn("Worker.perform/2 raised (#{inspect(error)})")
     end
 
-    schedule_work(state.interval)
-    {:noreply, state}
+    {:noreply, %State{state | schedule: schedule_work(state.interval)}}
   end
 
   @doc false
@@ -124,7 +149,7 @@ defmodule Siblings.InternalWorker do
   @doc false
   @impl GenServer
   def handle_info({:DOWN, ref, :process, pid, reason}, %State{fsm: {ref, pid}} = state) do
-    Logger.warn("FSM Down (reason: #{inspect(reason)}), IMPLEMENT CALLBACK TO REINIT")
+    Logger.warn("FSM Down (reason: #{inspect(reason)}), IMPLEMENT CALLBACK `on_init` TO REINIT")
     {:noreply, start_fsm(state)}
   end
 
@@ -138,9 +163,13 @@ defmodule Siblings.InternalWorker do
     do: if(is_function(state.offload, 1), do: state.offload.(state))
 
   @doc false
-  @spec schedule_work(interval :: non_neg_integer()) :: reference()
-  defp schedule_work(interval) when interval > 0, do: Process.send_after(self(), :work, interval)
-  defp schedule_work(_interval), do: :ok
+  @spec schedule_work(interval :: non_neg_integer()) :: :error | reference()
+  defp schedule_work(0), do: Process.send(self(), :work, [])
+
+  defp schedule_work(interval) when is_integer(interval) and interval > 0,
+    do: Process.send_after(self(), :work, interval)
+
+  defp schedule_work(_interval), do: :error
 
   @doc false
   # @spec start_fsm(State.t()) :: State.t()
@@ -153,7 +182,7 @@ defmodule Siblings.InternalWorker do
   end
 
   defp start_fsm(%State{fsm: {_ref, pid}} = state) do
-    if function_exported?(state.worker, :reinit, 1), do: state.worker.reinit(pid)
+    if function_exported?(state.worker, :on_init, 1), do: state.worker.on_init(pid)
     state
   end
 

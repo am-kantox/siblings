@@ -5,6 +5,8 @@ defmodule Siblings.Worker do
 
   use Boundary
 
+  alias Siblings.InternalWorker.State
+
   @typedoc "Identifier of the worker process"
   @type id :: any()
 
@@ -40,7 +42,13 @@ defmodule Siblings.Worker do
   @doc """
   The function to re-initialize FSM after crash.
   """
-  @callback reinit(pid()) :: :ok
+  @callback on_init(pid()) :: :ok
 
-  @optional_callbacks fsm: 0, reinit: 1
+  @doc """
+  The handler for the routed message from
+    `Siblings.InternalWorker.handle_call({:message, any()})`.
+  """
+  @callback on_call(message :: any(), State.t()) :: {result :: any(), State.t()}
+
+  @optional_callbacks fsm: 0, on_init: 1, on_call: 2
 end

@@ -82,7 +82,12 @@ The above would spawn two processes, checking the conditions once
 per a second (`interval`,) and manipulating the underlying _FSM_ to
 walk through the bids’ lifecycles.
 
-_Sidenote:_ Normally, `Siblings` supervisor would be put into 
+Worker’s interval might be reset with
+`GenServer.cast(pid, {:reset, interval})` and the message might be casted
+to it with `GenServer.call(pid, {:message, message})`. For the latter
+to work, the optional callback `on_call/2` must be implemented.
+
+_Sidenote:_ Normally, `Siblings` supervisor would be put into
 the supervision tree of the target application.
 
 ## Installation
@@ -97,6 +102,7 @@ end
 
 ## Changelog
 
+* `0.3.0` — `GenServer.cast(pid, {:reset, interval})` and `GenServer.call(pid, {:message, message})`
 * `0.2.0` — Fast `Worker` lookup
 * `0.1.0` — Initial MVP
 
