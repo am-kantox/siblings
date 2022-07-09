@@ -132,18 +132,26 @@ defmodule Siblings do
   @doc """
   Returns the list of currently managed children.
   """
-  @spec children(module()) :: [State.t()]
-  def children(name \\ default_fqn()), do: do_children(lookup(), name)
+  @spec children(:list | :map, module()) :: [State.t()]
+  def children(type \\ :list, name \\ default_fqn()), do: do_children(type, lookup(), name)
 
-  @spec do_children(nil | pid() | atom(), module()) :: [State.t()]
-  defp do_children(nil, name) do
+  @spec do_children(:list | :map, nil | pid() | atom(), module()) :: [State.t()]
+  defp do_children(:map, nil, name) do
+    for state <- do_children(:list, nil, name), into: %{}, do: {state.id, state}
+  end
+
+  defp do_children(:map, lookup, _name) when is_pid(lookup) or is_atom(lookup) do
+    for {id, pid} <- Lookup.all(lookup), into: %{}, do: {id, InternalWorker.state(pid)}
+  end
+
+  defp do_children(:list, nil, name) do
     for {_partition_id, dyn_sup_pid, :supervisor, [DynamicSupervisor]} <-
           PartitionSupervisor.which_children(name),
         {_name, pid, :worker, [InternalWorker]} <- DynamicSupervisor.which_children(dyn_sup_pid),
         do: InternalWorker.state(pid)
   end
 
-  defp do_children(lookup, _name) when is_pid(lookup) or is_atom(lookup) do
+  defp do_children(:list, lookup, _name) when is_pid(lookup) or is_atom(lookup) do
     lookup
     |> Lookup.all()
     |> Map.values()

@@ -16,6 +16,9 @@ defmodule SiblingsTest do
 
     assert [%Siblings.InternalWorker.State{id: "MyWorker"}] = Siblings.children()
 
+    assert %{"MyWorker" => %Siblings.InternalWorker.State{id: "MyWorker"}} =
+             Siblings.children(:map)
+
     assert_receive :s1_s2, 1_000
     assert_receive :s2_end, 1_000
 

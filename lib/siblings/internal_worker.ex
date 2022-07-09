@@ -135,6 +135,7 @@ defmodule Siblings.InternalWorker do
         Logger.warn("Worker.perform/2 raised (#{inspect(error)})")
     end
 
+    if is_reference(state.schedule), do: Process.cancel_timer(state.schedule)
     {:noreply, %State{state | schedule: schedule_work(state.interval)}}
   end
 
