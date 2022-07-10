@@ -80,6 +80,31 @@ defmodule Siblings.InternalWorker do
     )
   end
 
+  ## interface
+
+  @doc false
+  @spec state(pid | GenServer.name()) :: State.t()
+  def state(server), do: GenServer.call(server, :state)
+
+  @doc false
+  @spec call(pid | GenServer.name(), any()) :: State.t()
+  def call(server, message), do: GenServer.call(server, {:message, message})
+
+  @doc false
+  @spec reset(pid | GenServer.name(), non_neg_integer()) :: :ok
+  def reset(server, interval), do: GenServer.cast(server, {:reset, interval})
+
+  @doc false
+  @spec transition(
+          pid | GenServer.name(),
+          Finitomata.Transition.event(),
+          Finitomata.event_payload()
+        ) :: :ok
+  def transition(server, event, payload \\ nil),
+    do: GenServer.cast(server, {:transition, event, payload})
+
+  ## implementation
+
   @doc false
   @impl GenServer
   def init(%State{} = state) do
@@ -87,10 +112,6 @@ defmodule Siblings.InternalWorker do
     update_lookup(:put, state.lookup, state.id)
     {:ok, %State{state | schedule: schedule_work(state.interval)}}
   end
-
-  @doc false
-  @spec state(pid | GenServer.name()) :: State.t()
-  def state(server), do: GenServer.call(server, :state)
 
   @doc false
   @impl GenServer
@@ -118,6 +139,13 @@ defmodule Siblings.InternalWorker do
   @impl GenServer
   def handle_cast({:reset, 0}, state) do
     schedule_work(0)
+    {:noreply, state}
+  end
+
+  @doc false
+  @impl GenServer
+  def handle_cast({:transition, event, payload}, %State{fsm: {_ref, pid}} = state) do
+    GenServer.cast(pid, {event, payload})
     {:noreply, state}
   end
 
