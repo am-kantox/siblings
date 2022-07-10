@@ -102,6 +102,7 @@ end
 
 ## Changelog
 
+* `0.3.1` — retrieve childrens as both `map` and `list`
 * `0.3.0` — `GenServer.cast(pid, {:reset, interval})` and `GenServer.call(pid, {:message, message})`
 * `0.2.0` — Fast `Worker` lookup
 * `0.1.0` — Initial MVP
