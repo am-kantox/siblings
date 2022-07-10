@@ -102,6 +102,7 @@ end
 
 ## Changelog
 
+* `0.3.2` — `Siblings.{call/3, reset/3, transition/4}`
 * `0.3.1` — retrieve childrens as both `map` and `list`
 * `0.3.0` — `GenServer.cast(pid, {:reset, interval})` and `GenServer.call(pid, {:message, message})`
 * `0.2.0` — Fast `Worker` lookup
