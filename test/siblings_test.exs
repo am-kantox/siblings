@@ -1,5 +1,6 @@
 defmodule SiblingsTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
+
   doctest Siblings
   doctest Siblings.Worker
 

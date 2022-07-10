@@ -53,6 +53,7 @@ defmodule Siblings.InternalWorker do
   @typedoc "Allowed options in a call to `start_link/4`"
   @type options :: [
           {:interval, non_neg_integer()}
+          | {:lookup, module()}
           | {:name, GenServer.name()}
           | {:offload, (State.t() -> :ok)}
         ]
@@ -87,7 +88,8 @@ defmodule Siblings.InternalWorker do
   def state(server), do: GenServer.call(server, :state)
 
   @doc false
-  @spec call(pid | GenServer.name(), any()) :: State.t()
+  @spec call(pid | GenServer.name(), W.message()) ::
+          W.call_result() | {:error, :callback_not_implemented}
   def call(server, message), do: GenServer.call(server, {:message, message})
 
   @doc false

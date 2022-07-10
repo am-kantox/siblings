@@ -66,6 +66,45 @@ defmodule Siblings do
   def lookup?, do: not is_nil(lookup())
 
   @doc """
+  Performs a `GenServer.call/3` on the named worker.
+  """
+  @spec call(module(), Worker.id(), Worker.message()) ::
+          Worker.call_result() | {:error, :callback_not_implemented}
+  def call(name \\ default_fqn(), id, message) do
+    name
+    |> find_child(id, true)
+    |> elem(0)
+    |> InternalWorker.call(message)
+  end
+
+  @doc """
+  Resets the the named worker’s interval.
+  """
+  @spec reset(module(), Worker.id(), non_neg_integer()) :: :ok
+  def reset(name \\ default_fqn(), id, interval) do
+    name
+    |> find_child(id, true)
+    |> elem(0)
+    |> InternalWorker.reset(interval)
+  end
+
+  @doc """
+  Initiates the transition of the named worker.
+  """
+  @spec transition(
+          module(),
+          Worker.id(),
+          Finitomata.Transition.event(),
+          Finitomata.event_payload()
+        ) :: :ok
+  def transition(name \\ default_fqn(), id, event, payload) do
+    name
+    |> find_child(id, true)
+    |> elem(0)
+    |> InternalWorker.transition(event, payload)
+  end
+
+  @doc """
   Starts the supervised child under the `PartitionSupervisor`.
   """
   @spec start_child(module(), Worker.id(), Worker.payload(), InternalWorker.options()) ::

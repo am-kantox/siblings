@@ -10,6 +10,12 @@ defmodule Siblings.Worker do
   @typedoc "Identifier of the worker process"
   @type id :: any()
 
+  @typedoc "Message to be sent to the worker process"
+  @type message :: any()
+
+  @typedoc "Value, returned from `on_call/2` callback"
+  @type call_result :: any()
+
   @typedoc "Payload associated with the worker"
   @type payload :: Finitomata.State.payload()
 
@@ -48,7 +54,7 @@ defmodule Siblings.Worker do
   The handler for the routed message from
     `Siblings.InternalWorker.handle_call({:message, any()})`.
   """
-  @callback on_call(message :: any(), State.t()) :: {result :: any(), State.t()}
+  @callback on_call(message :: message(), State.t()) :: {result :: call_result(), State.t()}
 
   @optional_callbacks fsm: 0, on_init: 1, on_call: 2
 end
