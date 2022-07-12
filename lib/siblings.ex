@@ -65,6 +65,35 @@ defmodule Siblings do
   @spec lookup? :: boolean()
   def lookup?, do: not is_nil(lookup())
 
+  @doc false
+  @spec pid(module(), Worker.id()) :: pid()
+  def pid(name \\ default_fqn(), id) do
+    name
+    |> find_child(id, true)
+    |> elem(0)
+  end
+
+  @doc """
+  Returns the state of the named worker.
+  """
+  @spec state(module(), Worker.id()) :: State.t()
+  def state(name \\ default_fqn(), id) do
+    name
+    |> pid(id)
+    |> InternalWorker.state()
+  end
+
+  @doc """
+  Returns the payload of FSM behind the named worker.
+  """
+  @spec payload(module(), Worker.id()) :: Worker.payload()
+  def payload(name \\ default_fqn(), id) do
+    case state(name, id).fsm do
+      {_ref, pid} -> GenServer.call(pid, :state).payload
+      nil -> nil
+    end
+  end
+
   @doc """
   Performs a `GenServer.call/3` on the named worker.
   """
@@ -72,8 +101,7 @@ defmodule Siblings do
           Worker.call_result() | {:error, :callback_not_implemented}
   def call(name \\ default_fqn(), id, message) do
     name
-    |> find_child(id, true)
-    |> elem(0)
+    |> pid(id)
     |> InternalWorker.call(message)
   end
 
@@ -83,8 +111,7 @@ defmodule Siblings do
   @spec reset(module(), Worker.id(), non_neg_integer()) :: :ok
   def reset(name \\ default_fqn(), id, interval) do
     name
-    |> find_child(id, true)
-    |> elem(0)
+    |> pid(id)
     |> InternalWorker.reset(interval)
   end
 
@@ -99,8 +126,7 @@ defmodule Siblings do
         ) :: :ok
   def transition(name \\ default_fqn(), id, event, payload) do
     name
-    |> find_child(id, true)
-    |> elem(0)
+    |> pid(id)
     |> InternalWorker.transition(event, payload)
   end
 
