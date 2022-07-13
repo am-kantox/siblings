@@ -21,7 +21,7 @@ defmodule Siblings.InternalWorker do
             id: W.id(),
             initial_payload: W.payload(),
             worker: module(),
-            fsm: {reference(), pid()},
+            fsm: nil | {reference(), pid()},
             lookup: nil | GenServer.name(),
             offload: nil | (t() -> :ok),
             interval: non_neg_integer(),
