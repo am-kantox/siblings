@@ -19,15 +19,6 @@ defmodule Siblings.Worker do
   @typedoc "Payload associated with the worker"
   @type payload :: Finitomata.State.payload()
 
-  # @typedoc "Expected response from the `DymanicManager` implementation"
-  # @type response ::
-  #         :halt
-  #         | {:replace, payload()}
-  #         | {:replace, id(), payload()}
-  #         | {{:timeout, integer()}, payload()}
-  #         | {:ok, any()}
-  #         | any()
-
   @doc """
   The callback to be implemented in each and every worker.
 
