@@ -88,10 +88,8 @@ defmodule Siblings do
   """
   @spec payload(module(), Worker.id()) :: Worker.payload()
   def payload(name \\ default_fqn(), id) do
-    case state(name, id).fsm do
-      {_ref, pid} -> GenServer.call(pid, :state).payload
-      nil -> nil
-    end
+    with {_ref, pid} <- state(name, id).fsm,
+         do: GenServer.call(pid, :state).payload
   end
 
   @doc """
@@ -182,16 +180,10 @@ defmodule Siblings do
   end
 
   defp do_find_child(lookup, _name, id, with_pid?) when is_pid(lookup) or is_atom(lookup) do
-    lookup
-    |> Lookup.get(id)
-    |> then(fn
-      nil ->
-        nil
-
-      pid when is_pid(pid) ->
-        state = InternalWorker.state(pid)
-        if with_pid?, do: {pid, state}, else: state
-    end)
+    with pid when is_pid(pid) <- Lookup.get(lookup, id) do
+      state = InternalWorker.state(pid)
+      if with_pid?, do: {pid, state}, else: state
+    end
   end
 
   @doc """
