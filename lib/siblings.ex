@@ -102,6 +102,18 @@ defmodule Siblings do
   end
 
   @doc """
+  Performs a `GenServer.call/3` on all the workers.
+  """
+  @spec multi_call(module(), Worker.message()) ::
+          [Worker.call_result() | {:error, :callback_not_implemented}]
+  def multi_call(name \\ default_fqn(), message) do
+    :pids
+    |> children(name)
+    |> Task.async_stream(&InternalWorker.call(&1, message))
+    |> Enum.map(&elem(&1, 1))
+  end
+
+  @doc """
   Resets the the named worker’s interval.
   """
   @spec reset(module(), Worker.id(), non_neg_integer()) :: :ok
