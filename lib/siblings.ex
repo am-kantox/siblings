@@ -68,9 +68,7 @@ defmodule Siblings do
   @doc false
   @spec pid(module(), Worker.id()) :: pid()
   def pid(name \\ default_fqn(), id) do
-    name
-    |> find_child(id, true)
-    |> elem(0)
+    with {pid, _} when is_pid(pid) <- find_child(name, id, true), do: pid
   end
 
   @doc """
@@ -126,6 +124,21 @@ defmodule Siblings do
     name
     |> pid(id)
     |> InternalWorker.transition(event, payload)
+  end
+
+  @doc """
+  Initiates the transition of all the workers.
+  """
+  @spec multi_transition(
+          module(),
+          Finitomata.Transition.event(),
+          Finitomata.event_payload()
+        ) :: :ok
+  def multi_transition(name \\ default_fqn(), event, payload) do
+    :pids
+    |> children(name)
+    |> Task.async_stream(&InternalWorker.transition(&1, event, payload))
+    |> Stream.run()
   end
 
   @doc """
@@ -189,31 +202,36 @@ defmodule Siblings do
   @doc """
   Returns the list of currently managed children.
   """
-  @spec children(:list | :map, module()) :: [State.t()]
-  def children(type \\ :list, name \\ default_fqn()), do: do_children(type, lookup(), name)
+  @spec children(:pids | :states | :map, module()) :: [State.t()]
+  def children(type \\ :states, name \\ default_fqn()),
+    do: do_children(type, lookup(), name)
 
-  @spec do_children(:list | :map, nil | pid() | atom(), module()) :: [State.t()]
+  @spec do_children(:pids | :states | :map, nil | pid() | atom(), module()) ::
+          [State.t()] | [pid]
   defp do_children(:map, nil, name) do
-    for state <- do_children(:list, nil, name), into: %{}, do: {state.id, state}
+    for state <- do_children(:states, nil, name), into: %{}, do: {state.id, state}
   end
 
-  defp do_children(:map, lookup, _name) when is_pid(lookup) or is_atom(lookup) do
-    for {id, pid} <- Lookup.all(lookup), into: %{}, do: {id, InternalWorker.state(pid)}
+  defp do_children(:map, lookup, name) when is_pid(lookup) or is_atom(lookup) do
+    for state <- do_children(:states, lookup, name), into: %{}, do: {state.id, state}
   end
 
-  defp do_children(:list, nil, name) do
+  defp do_children(:pids, nil, name) do
     for {_partition_id, dyn_sup_pid, :supervisor, [DynamicSupervisor]} <-
           PartitionSupervisor.which_children(name),
         {_name, pid, :worker, [InternalWorker]} <- DynamicSupervisor.which_children(dyn_sup_pid),
-        do: InternalWorker.state(pid)
+        do: pid
   end
 
-  defp do_children(:list, lookup, _name) when is_pid(lookup) or is_atom(lookup) do
-    lookup
-    |> Lookup.all()
-    |> Map.values()
-    |> Enum.map(&InternalWorker.state/1)
+  defp do_children(:pids, lookup, _name) when is_pid(lookup) or is_atom(lookup) do
+    for {_id, pid} <- Lookup.all(lookup), do: pid
   end
+
+  defp do_children(:states, nil, name),
+    do: :pids |> do_children(nil, name) |> Enum.map(&InternalWorker.state/1)
+
+  defp do_children(:states, lookup, name) when is_pid(lookup) or is_atom(lookup),
+    do: :pids |> do_children(lookup, name) |> Enum.map(&InternalWorker.state/1)
 
   @spec default_fqn :: module()
   @doc false

@@ -12,7 +12,7 @@ defmodule Siblings.Lookup do
     |> Agent.start_link(name: lookup_fqn(name))
     |> tap(fn _ ->
       Task.start_link(fn ->
-        :list
+        :states
         |> Siblings.children(name)
         |> Enum.each(&put(lookup_fqn(name), &1.id, &1))
       end)
