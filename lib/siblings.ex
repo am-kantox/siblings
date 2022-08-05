@@ -19,18 +19,33 @@ defmodule Siblings do
   alias Siblings.{InternalWorker, InternalWorker.State, Lookup, Worker}
 
   @doc """
+  Returns the [child spec](https://hexdocs.pm/elixir/Supervisor.html#t:child_spec/0)
+    for the named or unnamed `Siblings` process.
+
+  Useful when many `Siblings` processes are running simultaneously.
+  """
+  @spec child_spec([{:name, module()} | {:lookup, module()}]) :: Supervisor.child_spec()
+  def child_spec(opts) do
+    name = Keyword.get(opts, :name, default_fqn())
+    %{id: name, start: {Siblings, :start_link, [opts]}}
+  end
+
+  @doc """
   Starts the supervision subtree, holding the `PartitionSupervisor`.
   """
   def start_link(opts \\ []) do
-    name = Keyword.get(opts, :name, default_fqn())
+    {name, opts} = Keyword.pop(opts, :name, default_fqn())
+    {lookup, _opts} = Keyword.pop(opts, :lookup, :agent)
 
     lookup =
-      case Keyword.get(opts, :lookup, :agent) do
+      case lookup do
         :agent -> [{Lookup, name: name}]
         _ -> []
       end
 
-    children = [{PartitionSupervisor, child_spec: DynamicSupervisor, name: name} | lookup]
+    children = [
+      {PartitionSupervisor, child_spec: DynamicSupervisor, name: name} | lookup
+    ]
 
     Supervisor.start_link(children, strategy: :one_for_one, name: sup_fqn(name))
   end
@@ -40,7 +55,7 @@ defmodule Siblings do
   def init(state), do: {:ok, state}
 
   @doc false
-  @spec lookup :: nil | pid() | atom()
+  @spec lookup(module()) :: nil | pid() | atom()
   def lookup(name \\ default_fqn()) do
     fqn = Siblings.Lookup.lookup_fqn(name)
 
@@ -62,8 +77,8 @@ defmodule Siblings do
   end
 
   @doc false
-  @spec lookup? :: boolean()
-  def lookup?, do: not is_nil(lookup())
+  @spec lookup?(module()) :: boolean()
+  def lookup?(name \\ default_fqn()), do: not is_nil(lookup(name))
 
   @doc false
   @spec pid(module(), Worker.id()) :: pid()
@@ -185,7 +200,7 @@ defmodule Siblings do
   """
   @spec find_child(module(), Worker.id(), boolean()) :: nil | State.t() | {pid(), State.t()}
   def find_child(name \\ default_fqn(), id, with_pid? \\ false),
-    do: do_find_child(lookup(), name, id, with_pid?)
+    do: do_find_child(lookup(name), name, id, with_pid?)
 
   @spec do_find_child(nil | pid() | atom(), module(), Worker.id(), boolean()) ::
           nil | State.t() | {pid(), State.t()}
@@ -216,7 +231,7 @@ defmodule Siblings do
   """
   @spec children(:pids | :states | :map, module()) :: [State.t()]
   def children(type \\ :states, name \\ default_fqn()),
-    do: do_children(type, lookup(), name)
+    do: do_children(type, lookup(name), name)
 
   @spec do_children(:pids | :states | :map, nil | pid() | atom(), module()) ::
           [State.t()] | [pid]

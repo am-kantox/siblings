@@ -5,28 +5,39 @@ defmodule SiblingsTest do
   doctest Siblings.Worker
 
   setup do
-    %{siblings: start_supervised!(Siblings)}
+    %{
+      siblings: start_supervised!(Siblings),
+      my_siblings: start_supervised!(Siblings.child_spec(name: MySiblings))
+    }
+
     # on_exit(fn -> Process.sleep(100) end)
   end
 
   test "Worker with FSM" do
     {:ok, pid} =
-      Siblings.start_child(Siblings.Test.Worker, "MyWorker", %{pid: self()}, interval: 200)
+      Siblings.start_child(Siblings.Test.Worker, "MyWorker", %{pid: self()},
+        name: MySiblings,
+        interval: 200
+      )
 
     assert {:error, {:already_started, ^pid}} =
-             Siblings.start_child(Siblings.Test.Worker, "MyWorker", %{pid: self()}, interval: 200)
+             Siblings.start_child(Siblings.Test.Worker, "MyWorker", %{pid: self()},
+               name: MySiblings,
+               interval: 200
+             )
 
-    assert [%Siblings.InternalWorker.State{id: "MyWorker"}] = Siblings.children()
+    assert [%Siblings.InternalWorker.State{id: "MyWorker"}] =
+             Siblings.children(:states, MySiblings)
 
     assert %{"MyWorker" => %Siblings.InternalWorker.State{id: "MyWorker"}} =
-             Siblings.children(:map)
+             Siblings.children(:map, MySiblings)
 
     assert_receive :s1_s2, 1_000
     assert_receive :s2_end, 1_000
 
     Process.sleep(100)
 
-    assert [] == Siblings.children()
+    assert [] == Siblings.children(:states, MySiblings)
   end
 
   test "Worker-FSM" do
