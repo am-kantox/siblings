@@ -2,7 +2,7 @@ defmodule Siblings.MixProject do
   use Mix.Project
 
   @app :siblings
-  @version "0.3.3"
+  @version "0.4.0"
 
   def project do
     [
