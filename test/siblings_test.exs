@@ -7,7 +7,14 @@ defmodule SiblingsTest do
   setup do
     %{
       siblings: start_supervised!(Siblings),
-      my_siblings: start_supervised!(Siblings.child_spec(name: MySiblings))
+      my_siblings: start_supervised!(Siblings.child_spec(name: MySiblings)),
+      init_siblings:
+        start_supervised!(
+          Siblings.child_spec(
+            name: InitSiblings,
+            workers: [{Siblings.Test.Worker, id: "InitWorker"}]
+          )
+        )
     }
 
     # on_exit(fn -> Process.sleep(100) end)

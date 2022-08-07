@@ -102,6 +102,7 @@ end
 
 ## Changelog
 
+* `0.4.2` — accept `workers:` in call to `Siblings.child_spec/1` to statically initialize `Siblings`
 * `0.4.1` — [BUG] many named `Siblings` instances
 * `0.4.0` — `Siblings.{multi_call/2, multi_transition/3}`
 * `0.3.3` — `Siblings.{state/1, payload/2}`

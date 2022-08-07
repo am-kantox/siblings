@@ -18,22 +18,36 @@ defmodule Siblings do
 
   alias Siblings.{InternalWorker, InternalWorker.State, Lookup, Worker}
 
-  @doc """
-  Returns the [child spec](https://hexdocs.pm/elixir/Supervisor.html#t:child_spec/0)
-    for the named or unnamed `Siblings` process.
-
-  Useful when many `Siblings` processes are running simultaneously.
-  """
-  @spec child_spec([{:name, module()} | {:lookup, module()}]) :: Supervisor.child_spec()
-  def child_spec(opts) do
-    name = Keyword.get(opts, :name, default_fqn())
-    %{id: name, start: {Siblings, :start_link, [opts]}}
-  end
+  @default_interval Application.compile_env(:siblings, :perform_interval, 5_000)
 
   @doc """
   Starts the supervision subtree, holding the `PartitionSupervisor`.
   """
   def start_link(opts \\ []) do
+    {name, opts} =
+      Keyword.get_and_update(opts, :name, fn
+        nil -> {default_fqn(), default_fqn()}
+        name -> {name, name}
+      end)
+
+    {workers, opts} = Keyword.pop(opts, :workers, [])
+
+    Siblings
+    |> Supervisor.start_link(opts, name: sup_fqn(name))
+    |> tap(fn _ ->
+      Enum.each(workers, fn {worker, opts} ->
+        {id, opts} = Keyword.pop(opts, :id, worker)
+        {interval, opts} = Keyword.pop(opts, :interval, @default_interval)
+        state = Map.new(opts)
+
+        Siblings.start_child(worker, id, state, name: name, interval: interval)
+      end)
+    end)
+  end
+
+  @doc false
+  @impl Supervisor
+  def init(opts) do
     {name, opts} = Keyword.pop(opts, :name, default_fqn())
     {lookup, _opts} = Keyword.pop(opts, :lookup, :agent)
 
@@ -47,12 +61,20 @@ defmodule Siblings do
       {PartitionSupervisor, child_spec: DynamicSupervisor, name: name} | lookup
     ]
 
-    Supervisor.start_link(children, strategy: :one_for_one, name: sup_fqn(name))
+    Supervisor.init(children, strategy: :one_for_one)
   end
 
-  @doc false
-  @impl Supervisor
-  def init(state), do: {:ok, state}
+  @doc """
+  Returns the [child spec](https://hexdocs.pm/elixir/Supervisor.html#t:child_spec/0)
+    for the named or unnamed `Siblings` process.
+
+  Useful when many `Siblings` processes are running simultaneously.
+  """
+  @spec child_spec([{:name, module()} | {:lookup, module()}]) :: Supervisor.child_spec()
+  def child_spec(opts) do
+    {id, opts} = Keyword.pop(opts, :id, Keyword.get(opts, :name, default_fqn()))
+    %{id: id, start: {Siblings, :start_link, [opts]}}
+  end
 
   @doc false
   @spec lookup(module()) :: nil | pid() | atom()
@@ -185,7 +207,7 @@ defmodule Siblings do
         opts = Keyword.put(opts, :lookup, Siblings.lookup(name))
 
         spec = %{
-          id: worker,
+          id: Enum.join([worker, id], ":"),
           start: {InternalWorker, :start_link, [worker, id, payload, opts]},
           restart: :transient,
           shutdown: shutdown
