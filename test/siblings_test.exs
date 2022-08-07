@@ -7,7 +7,7 @@ defmodule SiblingsTest do
   setup do
     %{
       siblings: start_supervised!(Siblings),
-      my_siblings: start_supervised!(Siblings.child_spec(name: MySiblings)),
+      my_siblings: start_supervised!(Siblings.child_spec(name: MySiblings, lookup: :none)),
       init_siblings:
         start_supervised!(
           Siblings.child_spec(
