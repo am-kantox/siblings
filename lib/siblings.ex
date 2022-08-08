@@ -38,9 +38,14 @@ defmodule Siblings do
       Enum.each(workers, fn {worker, opts} ->
         {id, opts} = Keyword.pop(opts, :id, worker)
         {interval, opts} = Keyword.pop(opts, :interval, @default_interval)
+        {hibernate?, opts} = Keyword.pop(opts, :hibernate?, false)
         state = Map.new(opts)
 
-        Siblings.start_child(worker, id, state, name: name, interval: interval)
+        Siblings.start_child(worker, id, state,
+          name: name,
+          hibernate?: hibernate?,
+          interval: interval
+        )
       end)
     end)
   end

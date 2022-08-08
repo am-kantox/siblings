@@ -24,12 +24,14 @@ defmodule SiblingsTest do
     {:ok, pid} =
       Siblings.start_child(Siblings.Test.Worker, "MyWorker", %{pid: self()},
         name: MySiblings,
+        hibernate?: true,
         interval: 200
       )
 
     assert {:error, {:already_started, ^pid}} =
              Siblings.start_child(Siblings.Test.Worker, "MyWorker", %{pid: self()},
                name: MySiblings,
+               hibernate?: true,
                interval: 200
              )
 

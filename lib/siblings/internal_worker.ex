@@ -23,11 +23,12 @@ defmodule Siblings.InternalWorker do
             worker: module(),
             fsm: nil | {reference(), pid()},
             lookup: nil | GenServer.name(),
+            hibernate?: boolean(),
             offload: nil | (t() -> :ok),
             interval: non_neg_integer(),
             schedule: reference()
           }
-    defstruct ~w|id initial_payload worker fsm lookup offload interval schedule|a
+    defstruct ~w|id initial_payload worker fsm lookup hibernate? offload interval schedule|a
 
     defimpl Inspect do
       @moduledoc false
@@ -42,6 +43,9 @@ defmodule Siblings.InternalWorker do
           id: state.id,
           fsm: GenServer.call(fsm_pid, :state),
           worker: Function.capture(state.worker, :perform, 3),
+          lookup: state.lookup,
+          hibernate?: state.hibernate?,
+          offload: not is_nil(state.offload),
           interval: state.interval
         ]
 
@@ -55,16 +59,17 @@ defmodule Siblings.InternalWorker do
           {:interval, non_neg_integer()}
           | {:lookup, module()}
           | {:name, GenServer.name()}
+          | {:hibernate?, boolean()}
           | {:offload, (State.t() -> :ok)}
         ]
 
   @doc false
   @spec start_link(module(), W.id(), W.payload(), opts :: options()) :: GenServer.on_start()
   def start_link(worker, id, payload, opts \\ []) do
-    {interval, opts} = Keyword.pop(opts, :interval)
     {lookup, opts} = Keyword.pop(opts, :lookup)
+    {hibernate?, opts} = Keyword.pop(opts, :hibernate?, false)
     {offload, opts} = Keyword.pop(opts, :offload)
-
+    {interval, opts} = Keyword.pop(opts, :interval)
     interval = if is_integer(interval) and interval >= 0, do: interval, else: 5_000
 
     GenServer.start_link(
@@ -75,6 +80,7 @@ defmodule Siblings.InternalWorker do
         worker: worker,
         lookup: lookup,
         offload: offload,
+        hibernate?: hibernate?,
         interval: interval
       },
       opts
@@ -117,6 +123,9 @@ defmodule Siblings.InternalWorker do
 
   @doc false
   @impl GenServer
+  def handle_call(:state, _, %State{hibernate?: true} = state),
+    do: {:reply, state, state, :hibernate}
+
   def handle_call(:state, _, state), do: {:reply, state, state}
 
   @doc false
@@ -127,7 +136,7 @@ defmodule Siblings.InternalWorker do
         do: state.worker.on_call(message, state),
         else: {{:error, :callback_not_implemented}, state}
 
-    {:reply, result, state}
+    if state.hibernate?, do: {:reply, result, state, :hibernate}, else: {:reply, result, state}
   end
 
   @doc false
@@ -148,12 +157,14 @@ defmodule Siblings.InternalWorker do
   @impl GenServer
   def handle_cast({:transition, event, payload}, %State{fsm: {_ref, pid}} = state) do
     GenServer.cast(pid, {event, payload})
-    {:noreply, state}
+    if state.hibernate?, do: {:noreply, state, :hibernate}, else: {:noreply, state}
   end
 
   @doc false
   @impl GenServer
   def handle_info(:work, %State{fsm: {_ref, pid}} = state) do
+    if is_reference(state.schedule), do: Process.cancel_timer(state.schedule)
+
     case safe_perform(state) do
       :noop ->
         :ok
@@ -165,8 +176,8 @@ defmodule Siblings.InternalWorker do
         Logger.warn("Worker.perform/2 raised (#{inspect(error)})")
     end
 
-    if is_reference(state.schedule), do: Process.cancel_timer(state.schedule)
-    {:noreply, %State{state | schedule: schedule_work(state.interval)}}
+    state = %State{state | schedule: schedule_work(state.interval)}
+    if state.hibernate?, do: {:noreply, state, :hibernate}, else: {:noreply, state}
   end
 
   @doc false
