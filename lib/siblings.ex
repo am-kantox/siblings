@@ -26,7 +26,7 @@ defmodule Siblings do
   def start_link(opts \\ []) do
     {name, opts} =
       Keyword.get_and_update(opts, :name, fn
-        nil -> {default_fqn(), default_fqn()}
+        nil -> default_fqn() |> then(&{&1, &1})
         name -> {name, name}
       end)
 
@@ -75,32 +75,37 @@ defmodule Siblings do
 
   Useful when many `Siblings` processes are running simultaneously.
   """
-  @spec child_spec([{:name, module()} | {:lookup, module()}]) :: Supervisor.child_spec()
+  @spec child_spec([
+          {:name, module()} | {:lookup, :none | :agent | :fsm} | {:id, any()} | keyword()
+        ]) ::
+          Supervisor.child_spec()
   def child_spec(opts) do
     {id, opts} = Keyword.pop(opts, :id, Keyword.get(opts, :name, default_fqn()))
     %{id: id, start: {Siblings, :start_link, [opts]}}
   end
 
   @doc false
-  @spec lookup(module()) :: nil | pid() | atom()
-  def lookup(name \\ default_fqn()) do
-    fqn = Siblings.Lookup.lookup_fqn(name)
+  @spec lookup(module(), boolean()) :: nil | pid() | atom()
+  def lookup(name \\ default_fqn(), try_cached? \\ true)
+
+  def lookup(name, false) do
+    name
+    |> sup_fqn()
+    |> Supervisor.which_children()
+    |> Enum.find(&match?({_name, _pid, :worker, [mod]} when mod in [Lookup, Fsm], &1))
+    |> then(fn
+      {_name, pid, :worker, _} -> pid
+      _ -> nil
+    end)
+  end
+
+  def lookup(name, true) do
+    fqn = lookup_fqn(name)
 
     fqn
     |> Process.whereis()
     |> is_pid()
-    |> if do
-      fqn
-    else
-      name
-      |> sup_fqn()
-      |> Supervisor.which_children()
-      |> Enum.find(&match?({_name, _pid, :worker, [Lookup]}, &1))
-      |> then(fn
-        {_name, pid, :worker, [Lookup]} -> pid
-        _ -> nil
-      end)
-    end
+    |> if(do: fqn, else: lookup(name, false))
   end
 
   @doc false
@@ -256,9 +261,9 @@ defmodule Siblings do
   @doc """
   Returns the list of currently managed children.
   """
-  @spec children(:pids | :states | :map, module()) :: [State.t()]
-  def children(type \\ :states, name \\ default_fqn()),
-    do: do_children(type, lookup(name), name)
+  @spec children(:pids | :states | :map, module(), boolean()) :: [State.t()]
+  def children(type \\ :states, name \\ default_fqn(), try_cached? \\ true),
+    do: do_children(type, lookup(name, try_cached?), name)
 
   @spec do_children(:pids | :states | :map, nil | pid() | atom(), module()) ::
           [State.t()] | [pid]
@@ -294,4 +299,9 @@ defmodule Siblings do
   @spec sup_fqn(module()) :: module()
   @doc false
   defp sup_fqn(name), do: Module.concat(name, Supervisor)
+
+  @spec lookup_fqn(pid() | module()) :: module()
+  def lookup_fqn(name_or_pid \\ default_fqn())
+  def lookup_fqn(pid) when is_pid(pid), do: pid
+  def lookup_fqn(name), do: Module.concat(name, Lookup)
 end

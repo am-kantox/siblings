@@ -37,7 +37,7 @@ defmodule Siblings.MixProject do
 
   defp deps do
     [
-      {:finitomata, "~> 0.4"},
+      {:finitomata, "~> 0.5"},
       {:telemetria, "~> 0.12", optional: true},
       {:boundary, "~> 0.9", runtime: false},
       # dev / test
