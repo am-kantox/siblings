@@ -44,7 +44,7 @@ defmodule SiblingsTest do
   test "Worker-FSM" do
     Siblings.start_child(Siblings.Test.WorkerFSM, "MyWorkerFSM", %{pid: self()}, interval: 200)
 
-    pid = Siblings.find_child("MyWorkerFSM")
+    {pid, _} = Siblings.find_child(Siblings, "MyWorkerFSM", true)
 
     assert [%Siblings.InternalWorker.State{id: "MyWorkerFSM"}] = Siblings.children()
 
