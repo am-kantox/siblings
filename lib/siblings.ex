@@ -120,7 +120,7 @@ defmodule Siblings do
   end
 
   @doc false
-  @spec lookup(module(), true | false | :name | :never) :: nil | pid()
+  @spec lookup(module(), true | false | :name | :never) :: nil | pid() | atom()
   def lookup(name \\ default_fqn(), try_cached? \\ true)
 
   def lookup(_name, :never), do: nil
