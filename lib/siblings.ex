@@ -16,6 +16,8 @@ defmodule Siblings do
   use Supervisor
   use Boundary, deps: [PartitionSupervisor], exports: [Worker]
 
+  require Logger
+
   alias Siblings.{InternalWorker, InternalWorker.State, Lookup, Worker}
 
   @default_interval Application.compile_env(:siblings, :perform_interval, 5_000)
@@ -29,6 +31,21 @@ defmodule Siblings do
 
   @doc """
   Starts the supervision subtree, holding the `PartitionSupervisor`.
+
+  This is the main entry point of `Siblings`.
+    It starts the supervision tree, holding the partitioned
+    `DynamicSupervisor`s, the lookup to access children,
+    and the optional set of workers to start immediately.
+
+  `Siblings` are fully controlled by _FSM_ instances. Children
+    are added using `Siblings.Lookup` interface methods which go
+    all the way through underlying _FSM_ implementation.
+
+  `opts` might include:
+
+  - `name: atom()` which is a name of the `Siblings` instance, defaults to `Siblings`
+  - `workers: list()` the list of the workers to start imminently upon `Siblings` start
+  - `callbacks: list()` the list of the handler to call back upon `Lookup` transitions
   """
   def start_link(opts \\ []) do
     {name, opts} =
@@ -38,6 +55,7 @@ defmodule Siblings do
       end)
 
     {workers, opts} = Keyword.pop(opts, :workers, [])
+    {callbacks, opts} = Keyword.pop(opts, :callbacks, [])
 
     workers =
       Enum.map(workers, fn
@@ -60,10 +78,11 @@ defmodule Siblings do
     result = Supervisor.start_link(Siblings, opts, name: sup_fqn(name))
 
     case lookup(name) do
-      # [AM] start_workers(workers)
-      nil -> nil
-      pid when is_pid(pid) -> GenServer.cast(pid, {:initialize, %{start: workers}})
-      name -> GenServer.cast(name, {:initialize, %{start: workers}})
+      nil ->
+        if [] != workers, do: Logger.warn("workers without lookup are not [yet] supported")
+
+      fsm when is_pid(fsm) or is_atom(fsm) ->
+        GenServer.cast(fsm, {:initialize, %{workers: workers, callbacks: callbacks}})
     end
 
     result
@@ -176,7 +195,7 @@ defmodule Siblings do
   end
 
   @doc """
-  Returns the payload of FSM behind the named worker.
+  Returns the payload of _FSM_ behind the named worker.
   """
   @spec payload(module(), Worker.id()) :: Worker.payload()
   def payload(name \\ default_fqn(), id) do
@@ -291,9 +310,7 @@ defmodule Siblings do
     end
   end
 
-  @doc """
-  Returns the child with the given `id`, or `nil` if there is none.
-  """
+  @doc false
   @spec find_child(module(), Worker.id(), boolean()) :: nil | State.t() | {pid(), State.t()}
   def find_child(name \\ default_fqn(), id, with_pid? \\ false),
     do: do_find_child(lookup(name), name, id, with_pid?)
@@ -322,9 +339,7 @@ defmodule Siblings do
     end
   end
 
-  @doc """
-  Returns the list of currently managed children.
-  """
+  @doc false
   @spec children(:pids | :states | :map | :id_pids, module(), boolean() | :never) :: [State.t()]
   def children(type \\ :states, name \\ default_fqn(), try_cached? \\ true),
     do: do_children(type, lookup(name, try_cached?), name)
@@ -368,6 +383,7 @@ defmodule Siblings do
   defp sup_fqn(name), do: Module.concat(name, Supervisor)
 
   @spec lookup_fqn(pid() | module()) :: module()
+  @doc false
   def lookup_fqn(name_or_pid \\ default_fqn())
   def lookup_fqn(pid) when is_pid(pid), do: pid
   def lookup_fqn(name), do: Module.concat([name, "Lookup"])

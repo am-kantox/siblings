@@ -1,5 +1,12 @@
 defmodule Siblings.Lookup do
-  @moduledoc false
+  @moduledoc """
+  Lookup module to quick access children _and_ the _FSM_‌
+    for the `Siblings` instance itself.
+
+  This module is a part of `Siblings` supervision tree
+    and should never be started manually. It exposes the interface
+
+  """
 
   use Agent
 
@@ -16,15 +23,19 @@ defmodule Siblings.Lookup do
 
   use Finitomata, @fsm
 
+  @doc false
   @impl Finitomata
   def on_transition(:idle, :initialize, payload, state) do
     children = Siblings.children(:id_pids, state[:siblings], :never)
 
-    state = Map.put_new(state, :workers, children)
+    state =
+      state
+      |> Map.put_new(:workers, children)
+      |> Map.put_new(:callbacks, Map.get(payload, :callbacks, []))
 
     state =
       payload
-      |> Map.get(:start, [])
+      |> Map.get(:workers, [])
       |> Enum.reduce(state, fn payload, acc ->
         # [AM] Doc + Log on failures
         case on_transition(:ready, :start_child, payload, acc) do
@@ -36,13 +47,7 @@ defmodule Siblings.Lookup do
     {:ok, :ready, state}
   end
 
-  @impl Finitomata
-  def on_transition(:ready, :delete_child, %{id: id}, %{workers: workers} = state) do
-    if Map.has_key?(workers, id),
-      do: {:ok, :ready, %{state | workers: Map.delete(workers, id)}},
-      else: :noop
-  end
-
+  @doc false
   @impl Finitomata
   def on_transition(:ready, :start_child, payload, %{workers: workers} = state) do
     if Map.has_key?(workers, payload.id) and Process.alive?(Map.get(workers, payload.id)) do
@@ -53,6 +58,40 @@ defmodule Siblings.Lookup do
     end
   end
 
+  @doc false
+  @impl Finitomata
+  def on_transition(:ready, :delete_child, %{id: id}, %{workers: workers} = state) do
+    if Map.has_key?(workers, id),
+      do: {:ok, :ready, %{state | workers: Map.delete(workers, id)}},
+      else: :noop
+  end
+
+  @impl Finitomata
+  def on_failure(event, payload, %{callbacks: callbacks}) do
+    if is_function(callbacks[:on_failure], 2), do: callbacks[:on_failure].(event, payload)
+  end
+
+  @impl Finitomata
+  def on_enter(fsm_state, %{callbacks: callbacks}) do
+    if is_function(callbacks[:on_enter], 1), do: callbacks[:on_enter].(fsm_state)
+  end
+
+  @impl Finitomata
+  def on_exit(fsm_state, %{callbacks: callbacks}) do
+    if is_function(callbacks[:on_exit], 1), do: callbacks[:on_exit].(fsm_state)
+  end
+
+  @impl Finitomata
+  def on_terminate(%{callbacks: callbacks}) do
+    if is_function(callbacks[:on_terminate], 0), do: callbacks[:on_terminate].()
+  end
+
+  @doc """
+  Returns all the workers running under this `Siblings` instance as a map
+    `%{Siblings.Worker.id() => pid()}`.
+
+  This map might be really huge when there are many processes managed.
+  """
   @spec all(module()) :: %{Worker.id() => pid()}
   def all(name \\ Siblings.default_fqn()) do
     name
@@ -64,11 +103,18 @@ defmodule Siblings.Lookup do
     end
   end
 
+  @doc """
+  Returns the `pid` of the single dynamically supervised worker by its `id`.
+  """
   @spec get(module(), Worker.id()) :: pid()
   def get(name \\ Siblings.default_fqn(), id, default \\ nil) do
     name |> all() |> Map.get(id, default)
   end
 
+  @doc """
+  Initiates the `:start_child` transition with all the respective callbacks
+    to add a new child to the supervised list.
+  """
   @spec put(module(), Siblings.worker()) :: :ok
   def put(name \\ Siblings.default_fqn(), worker) do
     name
@@ -76,6 +122,10 @@ defmodule Siblings.Lookup do
     |> GenServer.cast({:start_child, worker})
   end
 
+  @doc """
+  Removes the reference for the naturally terminated child from the workers map
+    through `:delete_child` transition with all the respective callbacks.
+  """
   @spec del(module(), Worker.id()) :: :ok
   def del(name \\ Siblings.default_fqn(), id) do
     name |> Siblings.lookup_fqn() |> GenServer.cast({:delete_child, %{id: id}})
@@ -97,9 +147,4 @@ defmodule Siblings.Lookup do
 
     DynamicSupervisor.start_child({:via, PartitionSupervisor, {name, {worker, id}}}, spec)
   end
-
-  # @spec lookup_fqn(pid() | module()) :: module()
-  # def lookup_fqn(name_or_pid \\ Siblings.default_fqn())
-  # def lookup_fqn(pid) when is_pid(pid), do: pid
-  # def lookup_fqn(name), do: Module.concat(name, Lookup)
 end
