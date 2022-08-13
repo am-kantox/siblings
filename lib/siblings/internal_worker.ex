@@ -117,7 +117,6 @@ defmodule Siblings.InternalWorker do
   @impl GenServer
   def init(%State{} = state) do
     state = start_fsm(state)
-    update_lookup(:put, state.lookup, state.id)
     {:ok, %State{state | schedule: schedule_work(state.interval)}}
   end
 
@@ -198,7 +197,7 @@ defmodule Siblings.InternalWorker do
   @doc false
   @impl GenServer
   def terminate(:normal, state),
-    do: update_lookup(:del, state.lookup, state.id)
+    do: update_lookup(state.lookup, state.id)
 
   @impl GenServer
   def terminate(_, state),
@@ -229,10 +228,9 @@ defmodule Siblings.InternalWorker do
   end
 
   @doc false
-  @spec update_lookup(:put | :del, nil | GenServer.name(), W.id()) :: :ok
-  defp update_lookup(_action, nil, _id), do: :ok
-  defp update_lookup(:put, lookup, id), do: Siblings.Lookup.put(lookup, id, self())
-  defp update_lookup(:del, lookup, id), do: Siblings.Lookup.del(lookup, id)
+  @spec update_lookup(nil | GenServer.name(), W.id()) :: :ok
+  defp update_lookup(nil, _id), do: :ok
+  defp update_lookup(lookup, id), do: Siblings.Lookup.del(lookup, id)
 
   @doc false
   if T.enabled?(), do: @telemetria(level: :info)
