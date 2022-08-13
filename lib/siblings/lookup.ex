@@ -20,10 +20,12 @@ defmodule Siblings.Lookup do
   def on_transition(:idle, :initialize, payload, state) do
     children = Siblings.children(:id_pids, state[:siblings], :never)
 
-    workers =
+    state = Map.put_new(state, :workers, children)
+
+    state =
       payload
       |> Map.get(:start, [])
-      |> Enum.reduce(children, fn payload, acc ->
+      |> Enum.reduce(state, fn payload, acc ->
         # [AM] Doc + Log on failures
         case on_transition(:ready, :start_child, payload, acc) do
           {:ok, :ready, acc} -> acc
@@ -31,7 +33,7 @@ defmodule Siblings.Lookup do
         end
       end)
 
-    {:ok, :ready, Map.put(state, :workers, workers)}
+    {:ok, :ready, state}
   end
 
   @impl Finitomata

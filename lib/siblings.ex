@@ -53,16 +53,17 @@ defmodule Siblings do
             id: id,
             module: worker,
             payload: Map.new(opts),
-            options: [name: name, hibernate?: hibernate?, interval: interval]
+            options: [hibernate?: hibernate?, interval: interval]
           }
       end)
 
     result = Supervisor.start_link(Siblings, opts, name: sup_fqn(name))
 
     case lookup(name) do
-      pid when is_pid(pid) -> GenServer.cast(pid, {:initialize, %{start: workers}})
-      # start_workers(workers)
+      # [AM] start_workers(workers)
       nil -> nil
+      pid when is_pid(pid) -> GenServer.cast(pid, {:initialize, %{start: workers}})
+      name -> GenServer.cast(name, {:initialize, %{start: workers}})
     end
 
     result
@@ -119,7 +120,7 @@ defmodule Siblings do
   end
 
   @doc false
-  @spec lookup(module(), boolean() | :never) :: nil | pid()
+  @spec lookup(module(), true | false | :name | :never) :: nil | pid()
   def lookup(name \\ default_fqn(), try_cached? \\ true)
 
   def lookup(_name, :never), do: nil
@@ -143,13 +144,13 @@ defmodule Siblings do
     end
   end
 
-  def lookup(name, true) do
+  def lookup(name, try_cached?) do
     fqn = lookup_fqn(name)
 
     fqn
     |> Process.whereis()
     |> case do
-      pid when is_pid(pid) -> pid
+      pid when is_pid(pid) -> if :name == try_cached?, do: fqn, else: pid
       _ -> lookup(name, false)
     end
   end
