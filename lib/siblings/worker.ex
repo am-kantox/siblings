@@ -26,7 +26,9 @@ defmodule Siblings.Worker do
   transitioning the underlying FSM according to the return value.
   """
   @callback perform(state :: Finitomata.Transition.state(), id :: id(), payload :: payload()) ::
-              {:transition, Finitomata.Transition.event(), Finitomata.event_payload()} | :noop
+              {:transition, Finitomata.Transition.event(), Finitomata.event_payload()}
+              | {:reschedule, non_neg_integer()}
+              | :noop
 
   @doc """
   The `Finitomata` FSM implementation module.

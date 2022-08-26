@@ -102,6 +102,7 @@ end
 
 ## Changelog
 
+* `0.5.1` — allow `{:reschedule, non_neg_integer()}` return from `perform/3`
 * `0.5.0` — use _FSM_ for the `Sibling.Lookup`
 * `0.4.3` — accept `hibernate?:` boolean parameter in call to `Siblings.start_child/4` to hibernate children
 * `0.4.2` — accept `workers:` in call to `Siblings.child_spec/1` to statically initialize `Siblings`

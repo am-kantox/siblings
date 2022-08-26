@@ -164,18 +164,24 @@ defmodule Siblings.InternalWorker do
   def handle_info(:work, %State{fsm: {_ref, pid}} = state) do
     if is_reference(state.schedule), do: Process.cancel_timer(state.schedule)
 
-    case safe_perform(state) do
-      :noop ->
-        :ok
+    interval =
+      case safe_perform(state) do
+        :noop ->
+          state.interval
 
-      {:transition, event, payload} ->
-        GenServer.cast(pid, {event, payload})
+        {:transition, event, payload} ->
+          GenServer.cast(pid, {event, payload})
+          state.interval
 
-      {:error, error} ->
-        Logger.warn("Worker.perform/2 raised (#{inspect(error)})")
-    end
+        {:reschedule, interval} ->
+          interval
 
-    state = %State{state | schedule: schedule_work(state.interval)}
+        {:error, error} ->
+          Logger.warn("Worker.perform/2 raised (#{error})")
+          state.interval
+      end
+
+    state = %State{state | schedule: schedule_work(interval)}
     if state.hibernate?, do: {:noreply, state, :hibernate}, else: {:noreply, state}
   end
 
@@ -239,10 +245,6 @@ defmodule Siblings.InternalWorker do
     %Finitomata.State{current: current, payload: payload} = GenServer.call(pid, :state)
     state.worker.perform(current, state.id, payload)
   rescue
-    err ->
-      case err do
-        %{__exception__: true} ->
-          {:error, Exception.message(err)}
-      end
+    err -> Exception.message(err)
   end
 end
