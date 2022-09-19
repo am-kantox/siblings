@@ -210,7 +210,7 @@ defmodule Siblings do
   Returns the payload of _FSM_ behind the named worker.
   """
   @spec payload(module(), Worker.id()) :: Worker.payload()
-  def payload(name \\ default_fqn(), id), do: state(:state, id, name).payload
+  def payload(name \\ default_fqn(), id), do: state(:fsm, id, name).payload
 
   @doc """
   Performs a `GenServer.call/3` on the named worker.
