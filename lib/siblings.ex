@@ -166,10 +166,9 @@ defmodule Siblings do
   def lookup(name, try_cached?) do
     fqn = lookup_fqn(name)
 
-    fqn
-    |> Process.whereis()
-    |> case do
-      pid when is_pid(pid) -> if :name == try_cached?, do: fqn, else: pid
+    case {try_cached?, Process.whereis(fqn)} do
+      {:name, pid} when is_pid(pid) -> fqn
+      {true, pid} when is_pid(pid) -> pid
       _ -> lookup(name, false)
     end
   end
@@ -186,22 +185,27 @@ defmodule Siblings do
 
   @doc """
   Returns the state of the named worker.
+
+  When the last parameter is `:full` (default,) returns the whole state,
+    when `:state` is given, returns the state of the underlying _FSM_ only.
   """
-  @spec worker_state(module(), Worker.id()) :: State.t()
-  def worker_state(name \\ default_fqn(), id) do
-    name
-    |> pid(id)
-    |> InternalWorker.state()
+  @spec worker_state(module(), Worker.id(), fsm :: :state | :full) ::
+          State.t() | Finitomata.State.t()
+  def worker_state(name \\ default_fqn(), id, fsm \\ :full)
+
+  def worker_state(name, id, :full),
+    do: name |> pid(id) |> InternalWorker.state()
+
+  def worker_state(name, id, :state) do
+    %State{fsm: {_ref, pid}} = worker_state(name, id, :full)
+    GenServer.call(pid, :state)
   end
 
   @doc """
   Returns the payload of _FSM_ behind the named worker.
   """
   @spec payload(module(), Worker.id()) :: Worker.payload()
-  def payload(name \\ default_fqn(), id) do
-    with {_ref, pid} <- worker_state(name, id).fsm,
-         do: GenServer.call(pid, :state).payload
-  end
+  def payload(name \\ default_fqn(), id), do: worker_state(name, id, :state).payload
 
   @doc """
   Performs a `GenServer.call/3` on the named worker.
@@ -347,11 +351,15 @@ defmodule Siblings do
   @spec do_children(:pids | :states | :map | :id_pids, nil | pid() | atom(), module()) ::
           [State.t()] | [pid]
   defp do_children(:map, nil, name) do
-    for state <- do_children(:states, nil, name), into: %{}, do: {state.id, state}
+    for %InternalWorker.State{id: id, fsm: {_ref, pid}} <- do_children(:states, nil, name),
+        into: %{},
+        do: {id, GenServer.call(pid, :state)}
   end
 
   defp do_children(:map, lookup, name) when is_pid(lookup) or is_atom(lookup) do
-    for state <- do_children(:states, lookup, name), into: %{}, do: {state.id, state}
+    for %InternalWorker.State{id: id, fsm: {_ref, pid}} <- do_children(:states, lookup, name),
+        into: %{},
+        do: {id, GenServer.call(pid, :state)}
   end
 
   defp do_children(:pids, nil, name) do

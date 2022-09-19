@@ -53,7 +53,7 @@ defmodule MyApp.Worker do
     cond do
       time_to_bid?() -> {:transition, :bid, nil}
       stale?() -> {:transition, :reject, nil}
-      true -> :ok
+      true -> :noop
     end
   end
 

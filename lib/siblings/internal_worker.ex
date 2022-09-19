@@ -18,6 +18,7 @@ defmodule Siblings.InternalWorker do
     The state of the worker.
     """
     @type t :: %{
+            __struct__: __MODULE__,
             id: W.id(),
             initial_payload: W.payload(),
             worker: module(),

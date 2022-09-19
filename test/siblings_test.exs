@@ -2,7 +2,10 @@ defmodule SiblingsTest do
   use ExUnit.Case, async: true
 
   doctest Siblings
+  doctest Siblings.InternalWorker
   doctest Siblings.Worker
+
+  alias Siblings.InternalWorker
 
   setup do
     %{
@@ -27,11 +30,8 @@ defmodule SiblingsTest do
       interval: 200
     )
 
-    assert [%Siblings.InternalWorker.State{id: "MyWorker"}] =
-             Siblings.children(:states, MySiblings)
-
-    assert %{"MyWorker" => %Siblings.InternalWorker.State{id: "MyWorker"}} =
-             Siblings.children(:map, MySiblings)
+    assert [%InternalWorker.State{id: "MyWorker"}] = Siblings.children(:states, MySiblings)
+    assert %{"MyWorker" => %Finitomata.State{current: :s1}} = Siblings.children(:map, MySiblings)
 
     assert_receive :s1_s2, 1_000
     assert_receive :s2_end, 1_000
@@ -46,15 +46,13 @@ defmodule SiblingsTest do
 
     {pid, _} = Siblings.find_child(Siblings, "MyWorkerFSM", true)
 
-    assert [%Siblings.InternalWorker.State{id: "MyWorkerFSM"}] = Siblings.children()
-
-    assert %{"MyWorkerFSM" => %Siblings.InternalWorker.State{id: "MyWorkerFSM"}} =
-             Siblings.children(:map)
+    assert [%InternalWorker.State{id: "MyWorkerFSM"}] = Siblings.children()
+    assert %{"MyWorkerFSM" => %Finitomata.State{current: :s1}} = Siblings.children(:map)
 
     assert_receive :s1_s2, 1_000
     refute_receive :s3_end, 1_000
 
-    Siblings.InternalWorker.transition(pid, :to_s3)
+    InternalWorker.transition(pid, :to_s3)
 
     assert_receive :s3_end, 1_000
 
