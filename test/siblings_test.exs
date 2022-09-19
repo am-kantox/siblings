@@ -47,7 +47,20 @@ defmodule SiblingsTest do
     {pid, _} = Siblings.find_child(Siblings, "MyWorkerFSM", true)
 
     assert [%InternalWorker.State{id: "MyWorkerFSM"}] = Siblings.children()
+    assert %{"MyWorkerFSM" => %Finitomata.State{current: :s1}} = Siblings.states()
     assert %{"MyWorkerFSM" => %Finitomata.State{current: :s1}} = Siblings.children(:map)
+
+    assert %Finitomata.State{current: :ready, payload: %{workers: %{"MyWorkerFSM" => _}}} =
+             Siblings.state()
+
+    assert %Finitomata.State{current: :ready, payload: %{workers: %{"MyWorkerFSM" => _}}} =
+             Siblings.state(:instance, Siblings)
+
+    assert %Siblings.InternalWorker.State{id: "MyWorkerFSM"} =
+             Siblings.state(:sibling, "MyWorkerFSM")
+
+    assert %Finitomata.State{current: :s1} = Siblings.state("MyWorkerFSM")
+    assert %Finitomata.State{current: :s1} = Siblings.state(:fsm, "MyWorkerFSM")
 
     assert_receive :s1_s2, 1_000
     refute_receive :s3_end, 1_000

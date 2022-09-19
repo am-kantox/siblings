@@ -126,16 +126,39 @@ defmodule Siblings do
   end
 
   @doc """
-  Returns the state of the `Siblings` instance.
+  Returns the states of all the workers as a map.
   """
-  @spec state(module()) :: nil | Finitomata.State.t()
-  def state(name \\ default_fqn()) do
+  @spec states(module()) :: %{Worker.id() => Finitomata.State.t()}
+  def states(name \\ default_fqn()), do: children(:map, name)
+
+  @doc """
+  Returns the state of the `Siblings` instance itself, of the named worker, or
+    the named worker’s underlying _FSM_, depending on the first argument.
+  """
+  @spec state(
+          request :: :instance | :sibling | :fsm | Worker.id(),
+          Worker.id() | module(),
+          module()
+        ) ::
+          nil | State.t() | Finitomata.State.t()
+  def state(request \\ :instance, id \\ nil, name \\ default_fqn())
+
+  def state(:instance, nil, name) do
     name
     |> lookup()
     |> case do
       pid when is_pid(pid) -> GenServer.call(pid, :state)
       nil -> nil
     end
+  end
+
+  def state(:instance, name, _name), do: state(:instance, nil, name)
+  def state(id, nil, name), do: state(:fsm, id, name)
+  def state(:sibling, id, name), do: name |> pid(id) |> InternalWorker.state()
+
+  def state(:fsm, id, name) do
+    %State{fsm: {_ref, pid}} = state(:sibling, id, name)
+    GenServer.call(pid, :state)
   end
 
   @doc false
@@ -184,28 +207,10 @@ defmodule Siblings do
   end
 
   @doc """
-  Returns the state of the named worker.
-
-  When the last parameter is `:full` (default,) returns the whole state,
-    when `:state` is given, returns the state of the underlying _FSM_ only.
-  """
-  @spec worker_state(module(), Worker.id(), fsm :: :state | :full) ::
-          State.t() | Finitomata.State.t()
-  def worker_state(name \\ default_fqn(), id, fsm \\ :full)
-
-  def worker_state(name, id, :full),
-    do: name |> pid(id) |> InternalWorker.state()
-
-  def worker_state(name, id, :state) do
-    %State{fsm: {_ref, pid}} = worker_state(name, id, :full)
-    GenServer.call(pid, :state)
-  end
-
-  @doc """
   Returns the payload of _FSM_ behind the named worker.
   """
   @spec payload(module(), Worker.id()) :: Worker.payload()
-  def payload(name \\ default_fqn(), id), do: worker_state(name, id, :state).payload
+  def payload(name \\ default_fqn(), id), do: state(:state, id, name).payload
 
   @doc """
   Performs a `GenServer.call/3` on the named worker.
@@ -287,9 +292,7 @@ defmodule Siblings do
 
   @spec do_start_child(module() | nil, worker(), boolean()) ::
           :ok | DynamicSupervisor.on_start_child()
-  defp do_start_child(name, worker, true) do
-    Lookup.put(name, worker)
-  end
+  defp do_start_child(name, worker, true), do: Lookup.put(name, worker)
 
   defp do_start_child(name, worker, false) do
     case find_child(name, worker.id, false) do
@@ -344,12 +347,13 @@ defmodule Siblings do
   end
 
   @doc false
-  @spec children(:pids | :states | :map | :id_pids, module(), boolean() | :never) :: [State.t()]
+  @spec children(:pids | :states | :map | :id_pids, module(), boolean() | :never) ::
+          [State.t()] | [pid] | %{Worker.id() => pid()} | %{Worker.id() => Finitomata.State.t()}
   def children(type \\ :states, name \\ default_fqn(), try_cached? \\ true),
     do: do_children(type, lookup(name, try_cached?), name)
 
   @spec do_children(:pids | :states | :map | :id_pids, nil | pid() | atom(), module()) ::
-          [State.t()] | [pid]
+          [State.t()] | [pid] | %{Worker.id() => pid()} | %{Worker.id() => Finitomata.State.t()}
   defp do_children(:map, nil, name) do
     for %InternalWorker.State{id: id, fsm: {_ref, pid}} <- do_children(:states, nil, name),
         into: %{},
