@@ -2,7 +2,7 @@ defmodule Siblings.MixProject do
   use Mix.Project
 
   @app :siblings
-  @version "0.5.1"
+  @version "0.7.0"
 
   def project do
     [
@@ -37,7 +37,7 @@ defmodule Siblings.MixProject do
 
   defp deps do
     [
-      {:finitomata, "~> 0.5"},
+      {:finitomata, "~> 0.7"},
       {:telemetria, "~> 0.12", optional: true},
       {:boundary, "~> 0.9", runtime: false},
       # dev / test

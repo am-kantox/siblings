@@ -102,6 +102,7 @@ end
 
 ## Changelog
 
+* `0.7.0` — `Siblings.state/{0,1,2,3}` + update to `Finitoma 0.7`
 * `0.5.1` — allow `{:reschedule, non_neg_integer()}` return from `perform/3`
 * `0.5.0` — use _FSM_ for the `Sibling.Lookup`
 * `0.4.3` — accept `hibernate?:` boolean parameter in call to `Siblings.start_child/4` to hibernate children
