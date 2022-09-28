@@ -37,7 +37,7 @@ defmodule Siblings.MixProject do
 
   defp deps do
     [
-      {:finitomata, "~> 0.7"},
+      {:finitomata, "~> 0.8"},
       {:telemetria, "~> 0.12", optional: true},
       {:boundary, "~> 0.9", runtime: false},
       # dev / test
@@ -100,9 +100,9 @@ defmodule Siblings.MixProject do
   end
 
   defp compilers(:dev), do: [:boundary | compilers(:prod)]
-  defp compilers(_), do: [:telemetria | Mix.compilers()]
+  defp compilers(_), do: [:telemetria, :finitomata | Mix.compilers()]
 
-  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(:test), do: ["lib", "test/support", "test/finitomata_support"]
   defp elixirc_paths(:ci), do: ["lib", "test/support"]
   defp elixirc_paths(:dev), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]

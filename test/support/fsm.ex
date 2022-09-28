@@ -13,6 +13,11 @@ defmodule Siblings.Test.FSM do
     {:ok, :s2, payload}
   end
 
+  def on_transition(:s1, event, nil, %{pid: pid} = payload) when event in ~w|to_s3|a do
+    send(pid, :s1_s2)
+    {:ok, :s2, payload}
+  end
+
   def on_transition(:s2, :__end__, nil, %{pid: pid} = payload) do
     send(pid, :s2_end)
     {:ok, :*, payload}
