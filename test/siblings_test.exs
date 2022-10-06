@@ -1,4 +1,4 @@
-defmodule SiblingsTest do
+defmodule Siblings.Test.Siblings do
   use ExUnit.Case, async: true
 
   doctest Siblings
