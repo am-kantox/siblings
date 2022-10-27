@@ -2,7 +2,7 @@ defmodule Siblings.MixProject do
   use Mix.Project
 
   @app :siblings
-  @version "0.8.1"
+  @version "0.8.2"
 
   def project do
     [
@@ -17,7 +17,7 @@ defmodule Siblings.MixProject do
       package: package(),
       deps: deps(),
       aliases: aliases(),
-      preferred_cli_env: [finitomata: :finitomata],
+      preferred_cli_env: ["lib.compile": :lib_dev],
       xref: [exclude: []],
       docs: docs(),
       releases: [],
@@ -39,7 +39,7 @@ defmodule Siblings.MixProject do
   defp deps do
     [
       {:finitomata, "~> 0.8"},
-      {:telemetria, "~> 0.12", optional: true},
+      {:telemetria, "~> 0.12", optional: true, runtime: false},
       {:boundary, "~> 0.9", runtime: false},
       # dev / test
       {:credo, "~> 1.0", only: [:dev, :ci]},
@@ -56,7 +56,7 @@ defmodule Siblings.MixProject do
         "credo --strict",
         "dialyzer"
       ],
-      finitomata: ["clean siblings", "compile"]
+      "lib.compile": ["clean siblings", "compile"]
     ]
   end
 
@@ -101,12 +101,10 @@ defmodule Siblings.MixProject do
     ]
   end
 
-  defp compilers(:dev), do: [:boundary | compilers(:prod)]
-  defp compilers(:finitomata), do: [:telemetria, :finitomata | Mix.compilers()]
-  defp compilers(:test), do: [:telemetria, :finitomata | Mix.compilers()]
-  defp compilers(_), do: [:telemetria | Mix.compilers()]
+  defp compilers(:lib_dev), do: [:boundary, :finitomata, :telemetria | compilers(:dev)]
+  defp compilers(_), do: [:finitomata | Mix.Project.config()[:compilers] || Mix.compilers()]
 
-  defp elixirc_paths(:finitomata), do: ["lib", "test/finitomata_support"]
+  defp elixirc_paths(:lib_dev), do: ["lib", "test/support", "test/finitomata_support"]
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(:ci), do: ["lib", "test/support"]
   defp elixirc_paths(:dev), do: ["lib", "test/support"]

@@ -30,3 +30,6 @@ siblings-*.tar
 
 # Elixir LS
 /.elixir_ls/
+
+# Telemetria internals
+config/.telemetria.config.json
