@@ -189,7 +189,7 @@ defmodule Siblings.InternalWorker do
   @doc false
   @impl GenServer
   def handle_info({:DOWN, ref, :process, pid, :normal}, %State{fsm: {ref, pid}} = state) do
-    Logger.info("FSM Shut Us Down")
+    Logger.debug("FSM shut " <> inspect(state) <> " down")
     Process.demonitor(ref)
     {:stop, :normal, state}
   end
@@ -197,7 +197,7 @@ defmodule Siblings.InternalWorker do
   @doc false
   @impl GenServer
   def handle_info({:DOWN, ref, :process, pid, reason}, %State{fsm: {ref, pid}} = state) do
-    Logger.warn("FSM Down (reason: #{inspect(reason)}), IMPLEMENT CALLBACK `on_init` TO REINIT")
+    Logger.warn("FSM has crashed (reason: #{inspect(reason)}), IMPLEMENT CALLBACK `on_init` TO REINIT")
     {:noreply, start_fsm(state)}
   end
 
