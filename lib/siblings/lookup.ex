@@ -67,23 +67,27 @@ defmodule Siblings.Lookup do
   end
 
   @impl Finitomata
-  def on_failure(event, payload, %{callbacks: callbacks}) do
+  def on_failure(event, payload, %Finitomata.State{payload: %{callbacks: callbacks}}) do
     if is_function(callbacks[:on_failure], 2), do: callbacks[:on_failure].(event, payload)
+    :ok
   end
 
   @impl Finitomata
-  def on_enter(fsm_state, %{callbacks: callbacks}) do
+  def on_enter(fsm_state, %Finitomata.State{payload: %{callbacks: callbacks}}) do
     if is_function(callbacks[:on_enter], 1), do: callbacks[:on_enter].(fsm_state)
+    :ok
   end
 
   @impl Finitomata
-  def on_exit(fsm_state, %{callbacks: callbacks}) do
+  def on_exit(fsm_state, %Finitomata.State{payload: %{callbacks: callbacks}}) do
     if is_function(callbacks[:on_exit], 1), do: callbacks[:on_exit].(fsm_state)
+    :ok
   end
 
   @impl Finitomata
-  def on_terminate(%{callbacks: callbacks}) do
+  def on_terminate(%Finitomata.State{payload: %{callbacks: callbacks}}) do
     if is_function(callbacks[:on_terminate], 0), do: callbacks[:on_terminate].()
+    :ok
   end
 
   @doc """
