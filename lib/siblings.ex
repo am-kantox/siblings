@@ -18,7 +18,7 @@ defmodule Siblings do
 
   require Logger
 
-  alias Siblings.{InternalWorker, InternalWorker.State, Lookup, Killer, Worker}
+  alias Siblings.{InternalWorker, InternalWorker.State, Killer, Lookup, Worker}
 
   @default_interval Application.compile_env(:siblings, :perform_interval, 5_000)
 
@@ -45,7 +45,9 @@ defmodule Siblings do
 
   - `name: atom()` which is a name of the `Siblings` instance, defaults to `Siblings`
   - `workers: list()` the list of the workers to start imminently upon `Siblings` start
-  - `die_with_children: boolean()` shutdown the process when there is no more active child, defaults to `false`
+  - `die_with_children: true | false | (-> map())` shutdown the process when there is
+    no more active child, defaults to `false` (if a function of arity 1 is given, it’ll
+    be called before the process shuts down)
   - `callbacks: list()` the list of the handler to call back upon `Lookup` transitions
   """
   def start_link(opts \\ []) do
@@ -80,6 +82,7 @@ defmodule Siblings do
       {:ok, pid} ->
         case lookup(name) do
           nil ->
+            # credo:disable-for-next-line Credo.Check.Refactor.Nesting
             if [] != workers, do: Logger.warn("workers without lookup are not [yet] supported")
 
           fsm when is_pid(fsm) or is_atom(fsm) ->
@@ -109,7 +112,10 @@ defmodule Siblings do
           []
       end
 
-    watchdogs = if die_with_children, do: [{Siblings.Killer, name: name, pid: self()}], else: []
+    watchdogs =
+      if die_with_children,
+        do: [{Siblings.Killer, name: name, pid: self(), callback: die_with_children}],
+        else: []
 
     children =
       watchdogs ++

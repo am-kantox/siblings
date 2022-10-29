@@ -17,7 +17,11 @@ defmodule Siblings.Test.Siblings do
         ),
       my_siblings_with_killer:
         start_supervised!(
-          Siblings.child_spec(name: MySiblingsWithKiller, lookup: :none, die_with_children: true),
+          Siblings.child_spec(
+            name: MySiblingsWithKiller,
+            lookup: :none,
+            die_with_children: fn data -> assert %{id: "MyWorkerFSM"} = data end
+          ),
           restart: :temporary
         ),
       init_siblings:
