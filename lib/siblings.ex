@@ -174,27 +174,8 @@ defmodule Siblings do
   @doc false
   @spec lookup(module(), true | false | :name | :never) :: nil | pid() | atom()
   def lookup(name \\ default_fqn(), try_cached? \\ true)
-
   def lookup(_name, :never), do: nil
-
-  def lookup(name, false) do
-    name
-    |> sup_fqn()
-    |> Process.whereis()
-    |> case do
-      pid when is_pid(pid) ->
-        pid
-        |> Supervisor.which_children()
-        |> Enum.find(&match?({_name, _pid, :worker, [Lookup]}, &1))
-        |> case do
-          {_name, pid, :worker, _} -> pid
-          nil -> nil
-        end
-
-      nil ->
-        nil
-    end
-  end
+  def lookup(name, false), do: find_helper_by_pid(name, Lookup)
 
   def lookup(name, try_cached?) do
     fqn = lookup_fqn(name)
@@ -213,27 +194,8 @@ defmodule Siblings do
   @doc false
   @spec killer(module(), true | false | :name | :never) :: nil | pid() | atom()
   def killer(name \\ default_fqn(), try_cached? \\ true)
-
   def killer(_name, :never), do: nil
-
-  def killer(name, false) do
-    name
-    |> sup_fqn()
-    |> Process.whereis()
-    |> case do
-      pid when is_pid(pid) ->
-        pid
-        |> Supervisor.which_children()
-        |> Enum.find(&match?({_name, _pid, :worker, [Killer]}, &1))
-        |> case do
-          {_name, pid, :worker, _} -> pid
-          nil -> nil
-        end
-
-      nil ->
-        nil
-    end
-  end
+  def killer(name, false), do: find_helper_by_pid(name, Killer)
 
   def killer(name, try_cached?) do
     fqn = killer_fqn(name)
@@ -248,6 +210,26 @@ defmodule Siblings do
   @doc false
   @spec killer?(module()) :: boolean()
   def killer?(name \\ default_fqn()), do: not is_nil(killer(name))
+
+  @spec find_helper_by_pid(module(), module()) :: nil | pid()
+  defp find_helper_by_pid(name, module) do
+    name
+    |> sup_fqn()
+    |> Process.whereis()
+    |> case do
+      pid when is_pid(pid) ->
+        pid
+        |> Supervisor.which_children()
+        |> Enum.find(&match?({_name, _pid, :worker, [^module]}, &1))
+        |> case do
+          {_name, pid, :worker, _} -> pid
+          nil -> nil
+        end
+
+      nil ->
+        nil
+    end
+  end
 
   @doc false
   @spec pid(module(), Worker.id()) :: pid()
