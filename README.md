@@ -102,6 +102,7 @@ end
 
 ## Changelog
 
+* `0.10.0` — `die_with_children: boolean()` option 
 * `0.8.2` — updated with last `finitomata` compiler
 * `0.7.0` — `Siblings.state/{0,1,2,3}` + update to `Finitoma 0.7`
 * `0.5.1` — allow `{:reschedule, non_neg_integer()}` return from `perform/3`
