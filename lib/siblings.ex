@@ -45,6 +45,7 @@ defmodule Siblings do
 
   - `name: atom()` which is a name of the `Siblings` instance, defaults to `Siblings`
   - `workers: list()` the list of the workers to start imminently upon `Siblings` start
+  - `die_with_children: boolean()` shutdown the process when there is no more active child, defaults to `false`
   - `callbacks: list()` the list of the handler to call back upon `Lookup` transitions
   """
   def start_link(opts \\ []) do
@@ -75,26 +76,31 @@ defmodule Siblings do
           }
       end)
 
-    result = Supervisor.start_link(Siblings, opts, name: sup_fqn(name))
+    case Supervisor.start_link(Siblings, opts, name: sup_fqn(name)) do
+      {:ok, pid} ->
+        case lookup(name) do
+          nil ->
+            if [] != workers, do: Logger.warn("workers without lookup are not [yet] supported")
 
-    case lookup(name) do
-      nil ->
-        if [] != workers, do: Logger.warn("workers without lookup are not [yet] supported")
+          fsm when is_pid(fsm) or is_atom(fsm) ->
+            GenServer.cast(fsm, {:initialize, %{workers: workers, callbacks: callbacks}})
+        end
 
-      fsm when is_pid(fsm) or is_atom(fsm) ->
-        GenServer.cast(fsm, {:initialize, %{workers: workers, callbacks: callbacks}})
+        {:ok, pid}
+
+      other ->
+        other
     end
-
-    result
   end
 
   @doc false
   @impl Supervisor
   def init(opts) do
     {name, opts} = Keyword.pop(opts, :name, default_fqn())
-    {lookup, _opts} = Keyword.pop(opts, :lookup, true)
+    {lookup, opts} = Keyword.pop(opts, :lookup, true)
+    {die_with_children, _opts} = Keyword.pop(opts, :die_with_children, false)
 
-    lookup =
+    helpers =
       case lookup do
         true ->
           [{Lookup, payload: %{name: lookup_fqn(name), siblings: name}, name: lookup_fqn(name)}]
@@ -103,9 +109,13 @@ defmodule Siblings do
           []
       end
 
-    children = [
-      {PartitionSupervisor, child_spec: DynamicSupervisor, name: name} | lookup
-    ]
+    watchdogs = if die_with_children, do: [{SiblingsKiller, [name, self()]}], else: []
+
+    children =
+      watchdogs ++
+        [
+          {PartitionSupervisor, child_spec: DynamicSupervisor, name: name}
+        ] ++ helpers
 
     Supervisor.init(children, strategy: :one_for_one)
   end
@@ -290,30 +300,19 @@ defmodule Siblings do
     )
   end
 
-  @spec do_start_child(module() | nil, worker(), boolean()) ::
+  @spec do_start_child(name :: module() | nil, worker :: worker(), has_lookup? :: boolean()) ::
           :ok | DynamicSupervisor.on_start_child()
-  defp do_start_child(name, worker, true), do: Lookup.put(name, worker)
+  defp do_start_child(name, worker, true) do
+    case Lookup.get(name, worker.id) do
+      nil -> Lookup.put(name, worker)
+      pid when is_pid(pid) -> {:error, {:already_started, pid}}
+    end
+  end
 
   defp do_start_child(name, worker, false) do
     case find_child(name, worker.id, false) do
-      {pid, _child} ->
-        {:error, {:already_started, pid}}
-
-      nil ->
-        {shutdown, opts} = Keyword.pop(worker.options, :shutdown, 5_000)
-        opts = Keyword.put(opts, :lookup, Siblings.lookup(name))
-
-        spec = %{
-          id: Enum.join([worker.module, worker.id], ":"),
-          start: {InternalWorker, :start_link, [worker.module, worker.id, worker.payload, opts]},
-          restart: :transient,
-          shutdown: shutdown
-        }
-
-        DynamicSupervisor.start_child(
-          {:via, PartitionSupervisor, {name, {worker.module, worker.id}}},
-          spec
-        )
+      nil -> Lookup.start_child(name, worker)
+      {pid, _child} -> {:error, {:already_started, pid}}
     end
   end
 

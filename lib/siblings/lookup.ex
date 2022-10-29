@@ -110,7 +110,7 @@ defmodule Siblings.Lookup do
   @doc """
   Returns the `pid` of the single dynamically supervised worker by its `id`.
   """
-  @spec get(module(), Worker.id()) :: pid()
+  @spec get(module(), Worker.id()) :: pid() | nil
   def get(name \\ Siblings.default_fqn(), id, default \\ nil) do
     name |> all() |> Map.get(id, default)
   end
@@ -135,9 +135,11 @@ defmodule Siblings.Lookup do
     name |> Siblings.lookup_fqn() |> GenServer.cast({:delete_child, %{id: id}})
   end
 
+  @doc false
   @spec start_child(module(), Siblings.worker()) :: DynamicSupervisor.on_start_child()
-  defp start_child(name, %{module: worker, id: id} = worker_spec) do
+  def start_child(name, %{module: worker, id: id} = worker_spec) do
     payload = Map.get(worker_spec, :payload, %{})
+
     opts = Map.get(worker_spec, :options, [])
     {shutdown, opts} = Keyword.pop(opts, :shutdown, 5_000)
     opts = Keyword.put(opts, :lookup, Siblings.lookup(name))
