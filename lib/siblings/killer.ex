@@ -15,17 +15,25 @@ defmodule Siblings.Killer do
   def init(state), do: {:ok, state}
 
   @impl GenServer
-  def handle_cast({:down, down_info}, %{name: name, pid: pid, callback: callback}) do
-    spawn(fn ->
-      Process.sleep(1_000)
-
-      if Siblings.children(:pids, name) == [] do
-        # credo:disable-for-next-line Credo.Check.Refactor.Nesting
-        if is_function(callback, 1), do: callback.(down_info)
-        Supervisor.stop(pid)
-      end
-    end)
-
-    {:stop, :normal, %{pid: pid, down_info: down_info}}
+  def handle_cast({:down, _down_info}, state) do
+    with ref when is_reference(ref) <- Map.get(state, :timer), do: Process.cancel_timer(ref)
+    schedule_work()
+    {:noreply, state}
   end
+
+  @impl GenServer
+  def handle_info(:work, %{name: name, pid: pid, callback: callback} = state) do
+    if Siblings.children(:pids, name) == [] do
+      if is_function(callback, 0), do: callback.()
+      Supervisor.stop(pid)
+
+      {:stop, :normal, state}
+    else
+      {:noreply, Map.put(state, :timer, schedule_work())}
+    end
+  end
+
+  @spec schedule_work() :: reference()
+  defp schedule_work,
+    do: Process.send_after(self(), :work, 5_000)
 end

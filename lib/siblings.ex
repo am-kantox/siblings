@@ -45,8 +45,8 @@ defmodule Siblings do
 
   - `name: atom()` which is a name of the `Siblings` instance, defaults to `Siblings`
   - `workers: list()` the list of the workers to start imminently upon `Siblings` start
-  - `die_with_children: true | false | (-> map())` shutdown the process when there is
-    no more active child, defaults to `false` (if a function of arity 1 is given, it’ll
+  - `die_with_children: true | false | (-> :ok)` shutdown the process when there is
+    no more active child, defaults to `false` (if a function of arity 0 is given, it’ll
     be called before the process shuts down)
   - `callbacks: list()` the list of the handler to call back upon `Lookup` transitions
   """
