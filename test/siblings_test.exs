@@ -102,7 +102,7 @@ defmodule Siblings.Test.Siblings do
     Siblings.transition(MySiblingsWithKiller, "MyWorkerFSM", :to_s3, nil)
     assert_receive :s3_end, 1_000
 
-    Process.sleep(200)
+    Process.sleep(1_100)
     refute Process.whereis(MySiblingsWithKiller.Killer)
     refute Process.whereis(MySiblingsWithKiller)
   end

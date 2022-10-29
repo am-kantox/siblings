@@ -17,7 +17,7 @@ defmodule Siblings.Killer do
   @impl GenServer
   def handle_cast({:down, down_info}, %{name: name, pid: pid, callback: callback}) do
     spawn(fn ->
-      Process.sleep(100)
+      Process.sleep(1_000)
 
       if Siblings.children(:pids, name) == [] do
         # credo:disable-for-next-line Credo.Check.Refactor.Nesting
