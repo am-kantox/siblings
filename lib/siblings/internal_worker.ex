@@ -44,7 +44,7 @@ defmodule Siblings.InternalWorker do
       def inspect(%State{fsm: {_, fsm_pid}} = state, opts) do
         doc = [
           id: state.id,
-          fsm: GenServer.call(fsm_pid, :state),
+          fsm: if(Process.alive?(fsm_pid), do: GenServer.call(fsm_pid, :state)),
           worker: Function.capture(state.worker, :perform, 3),
           options: [
             killer: not is_nil(state.killer),
