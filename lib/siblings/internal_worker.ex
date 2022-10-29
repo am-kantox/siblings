@@ -23,13 +23,15 @@ defmodule Siblings.InternalWorker do
             initial_payload: W.payload(),
             worker: module(),
             fsm: nil | {reference(), pid()},
-            lookup: nil | GenServer.name(),
+            lookup: nil | pid() | GenServer.name(),
+            killer: nil | pid() | GenServer.name(),
             hibernate?: boolean(),
             offload: nil | (t() -> :ok),
-            interval: non_neg_integer(),
-            schedule: reference()
+            interval: nil | non_neg_integer(),
+            schedule: nil | reference()
           }
-    defstruct ~w|id initial_payload worker fsm lookup hibernate? offload interval schedule|a
+
+    defstruct ~w|id initial_payload worker fsm lookup killer hibernate? offload interval schedule|a
 
     defimpl Inspect do
       @moduledoc false
@@ -44,10 +46,13 @@ defmodule Siblings.InternalWorker do
           id: state.id,
           fsm: GenServer.call(fsm_pid, :state),
           worker: Function.capture(state.worker, :perform, 3),
-          lookup: state.lookup,
-          hibernate?: state.hibernate?,
-          offload: not is_nil(state.offload),
-          interval: state.interval
+          options: [
+            killer: not is_nil(state.killer),
+            lookup: not is_nil(state.lookup),
+            hibernate?: state.hibernate?,
+            offload: not is_nil(state.offload),
+            interval: state.interval
+          ]
         ]
 
         concat(["#Sibling<", to_doc(doc, opts), ">"])
@@ -57,8 +62,9 @@ defmodule Siblings.InternalWorker do
 
   @typedoc "Allowed options in a call to `start_link/4`"
   @type options :: [
-          {:interval, non_neg_integer()}
-          | {:lookup, module()}
+          {:interval, nil | non_neg_integer()}
+          | {:lookup, nil | pid() | GenServer.name()}
+          | {:killer, nil | pid() | GenServer.name()}
           | {:name, GenServer.name()}
           | {:hibernate?, boolean()}
           | {:offload, (State.t() -> :ok)}
@@ -68,10 +74,11 @@ defmodule Siblings.InternalWorker do
   @spec start_link(module(), W.id(), W.payload(), opts :: options()) :: GenServer.on_start()
   def start_link(worker, id, payload, opts \\ []) do
     {lookup, opts} = Keyword.pop(opts, :lookup)
-    {hibernate?, opts} = Keyword.pop(opts, :hibernate?, false)
+    {killer, opts} = Keyword.pop(opts, :killer)
     {offload, opts} = Keyword.pop(opts, :offload)
+    {hibernate?, opts} = Keyword.pop(opts, :hibernate?, false)
     {interval, opts} = Keyword.pop(opts, :interval)
-    interval = if is_integer(interval) and interval >= 0, do: interval, else: 5_000
+    interval = if is_integer(interval) and interval >= 0, do: interval
 
     GenServer.start_link(
       __MODULE__,
@@ -80,6 +87,7 @@ defmodule Siblings.InternalWorker do
         initial_payload: payload,
         worker: worker,
         lookup: lookup,
+        killer: killer,
         offload: offload,
         hibernate?: hibernate?,
         interval: interval
@@ -118,7 +126,13 @@ defmodule Siblings.InternalWorker do
   @impl GenServer
   def init(%State{} = state) do
     state = start_fsm(state)
-    {:ok, %State{state | schedule: schedule_work(state.interval)}}
+
+    state =
+      if is_nil(state.interval),
+        do: state,
+        else: %State{state | schedule: schedule_work(state.interval)}
+
+    {:ok, state}
   end
 
   @doc false
@@ -190,6 +204,24 @@ defmodule Siblings.InternalWorker do
   @impl GenServer
   def handle_info({:DOWN, ref, :process, pid, :normal}, %State{fsm: {ref, pid}} = state) do
     Process.demonitor(ref)
+
+    if state.killer do
+      down_info = %{
+        worker: __MODULE__,
+        id: state.id,
+        payload: state.initial_payload,
+        options: [
+          lookup: state.lookup,
+          killer: state.killer,
+          offload: state.offload,
+          hibernate?: state.hibernate?,
+          interval: state.interval
+        ]
+      }
+
+      GenServer.cast(state.killer, {:down, down_info})
+    end
+
     {:stop, :normal, state}
   end
 

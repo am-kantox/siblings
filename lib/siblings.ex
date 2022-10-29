@@ -18,7 +18,7 @@ defmodule Siblings do
 
   require Logger
 
-  alias Siblings.{InternalWorker, InternalWorker.State, Lookup, Worker}
+  alias Siblings.{InternalWorker, InternalWorker.State, Lookup, Killer, Worker}
 
   @default_interval Application.compile_env(:siblings, :perform_interval, 5_000)
 
@@ -45,6 +45,7 @@ defmodule Siblings do
 
   - `name: atom()` which is a name of the `Siblings` instance, defaults to `Siblings`
   - `workers: list()` the list of the workers to start imminently upon `Siblings` start
+  - `die_with_children: boolean()` shutdown the process when there is no more active child, defaults to `false`
   - `callbacks: list()` the list of the handler to call back upon `Lookup` transitions
   """
   def start_link(opts \\ []) do
@@ -75,26 +76,31 @@ defmodule Siblings do
           }
       end)
 
-    result = Supervisor.start_link(Siblings, opts, name: sup_fqn(name))
+    case Supervisor.start_link(Siblings, opts, name: sup_fqn(name)) do
+      {:ok, pid} ->
+        case lookup(name) do
+          nil ->
+            if [] != workers, do: Logger.warn("workers without lookup are not [yet] supported")
 
-    case lookup(name) do
-      nil ->
-        if [] != workers, do: Logger.warn("workers without lookup are not [yet] supported")
+          fsm when is_pid(fsm) or is_atom(fsm) ->
+            GenServer.cast(fsm, {:initialize, %{workers: workers, callbacks: callbacks}})
+        end
 
-      fsm when is_pid(fsm) or is_atom(fsm) ->
-        GenServer.cast(fsm, {:initialize, %{workers: workers, callbacks: callbacks}})
+        {:ok, pid}
+
+      other ->
+        other
     end
-
-    result
   end
 
   @doc false
   @impl Supervisor
   def init(opts) do
     {name, opts} = Keyword.pop(opts, :name, default_fqn())
-    {lookup, _opts} = Keyword.pop(opts, :lookup, true)
+    {lookup, opts} = Keyword.pop(opts, :lookup, true)
+    {die_with_children, _opts} = Keyword.pop(opts, :die_with_children, false)
 
-    lookup =
+    helpers =
       case lookup do
         true ->
           [{Lookup, payload: %{name: lookup_fqn(name), siblings: name}, name: lookup_fqn(name)}]
@@ -103,9 +109,13 @@ defmodule Siblings do
           []
       end
 
-    children = [
-      {PartitionSupervisor, child_spec: DynamicSupervisor, name: name} | lookup
-    ]
+    watchdogs = if die_with_children, do: [{Siblings.Killer, name: name, pid: self()}], else: []
+
+    children =
+      watchdogs ++
+        [
+          {PartitionSupervisor, child_spec: DynamicSupervisor, name: name}
+        ] ++ helpers
 
     Supervisor.init(children, strategy: :one_for_one)
   end
@@ -164,27 +174,8 @@ defmodule Siblings do
   @doc false
   @spec lookup(module(), true | false | :name | :never) :: nil | pid() | atom()
   def lookup(name \\ default_fqn(), try_cached? \\ true)
-
   def lookup(_name, :never), do: nil
-
-  def lookup(name, false) do
-    name
-    |> sup_fqn()
-    |> Process.whereis()
-    |> case do
-      pid when is_pid(pid) ->
-        pid
-        |> Supervisor.which_children()
-        |> Enum.find(&match?({_name, _pid, :worker, [Lookup]}, &1))
-        |> case do
-          {_name, pid, :worker, _} -> pid
-          nil -> nil
-        end
-
-      nil ->
-        nil
-    end
-  end
+  def lookup(name, false), do: find_helper_by_pid(name, Lookup)
 
   def lookup(name, try_cached?) do
     fqn = lookup_fqn(name)
@@ -199,6 +190,46 @@ defmodule Siblings do
   @doc false
   @spec lookup?(module()) :: boolean()
   def lookup?(name \\ default_fqn()), do: not is_nil(lookup(name))
+
+  @doc false
+  @spec killer(module(), true | false | :name | :never) :: nil | pid() | atom()
+  def killer(name \\ default_fqn(), try_cached? \\ true)
+  def killer(_name, :never), do: nil
+  def killer(name, false), do: find_helper_by_pid(name, Killer)
+
+  def killer(name, try_cached?) do
+    fqn = killer_fqn(name)
+
+    case {try_cached?, Process.whereis(fqn)} do
+      {:name, pid} when is_pid(pid) -> fqn
+      {true, pid} when is_pid(pid) -> pid
+      _ -> killer(name, false)
+    end
+  end
+
+  @doc false
+  @spec killer?(module()) :: boolean()
+  def killer?(name \\ default_fqn()), do: not is_nil(killer(name))
+
+  @spec find_helper_by_pid(module(), module()) :: nil | pid()
+  defp find_helper_by_pid(name, module) do
+    name
+    |> sup_fqn()
+    |> Process.whereis()
+    |> case do
+      pid when is_pid(pid) ->
+        pid
+        |> Supervisor.which_children()
+        |> Enum.find(&match?({_name, _pid, :worker, [^module]}, &1))
+        |> case do
+          {_name, pid, :worker, _} -> pid
+          nil -> nil
+        end
+
+      nil ->
+        nil
+    end
+  end
 
   @doc false
   @spec pid(module(), Worker.id()) :: pid()
@@ -290,30 +321,19 @@ defmodule Siblings do
     )
   end
 
-  @spec do_start_child(module() | nil, worker(), boolean()) ::
+  @spec do_start_child(name :: module() | nil, worker :: worker(), has_lookup? :: boolean()) ::
           :ok | DynamicSupervisor.on_start_child()
-  defp do_start_child(name, worker, true), do: Lookup.put(name, worker)
+  defp do_start_child(name, worker, true) do
+    case Lookup.get(name, worker.id) do
+      nil -> Lookup.put(name, worker)
+      pid when is_pid(pid) -> {:error, {:already_started, pid}}
+    end
+  end
 
   defp do_start_child(name, worker, false) do
     case find_child(name, worker.id, false) do
-      {pid, _child} ->
-        {:error, {:already_started, pid}}
-
-      nil ->
-        {shutdown, opts} = Keyword.pop(worker.options, :shutdown, 5_000)
-        opts = Keyword.put(opts, :lookup, Siblings.lookup(name))
-
-        spec = %{
-          id: Enum.join([worker.module, worker.id], ":"),
-          start: {InternalWorker, :start_link, [worker.module, worker.id, worker.payload, opts]},
-          restart: :transient,
-          shutdown: shutdown
-        }
-
-        DynamicSupervisor.start_child(
-          {:via, PartitionSupervisor, {name, {worker.module, worker.id}}},
-          spec
-        )
+      nil -> Lookup.start_child(name, worker)
+      {pid, _child} -> {:error, {:already_started, pid}}
     end
   end
 
@@ -399,4 +419,10 @@ defmodule Siblings do
   def lookup_fqn(name_or_pid \\ default_fqn())
   def lookup_fqn(pid) when is_pid(pid), do: pid
   def lookup_fqn(name), do: Module.concat([name, "Lookup"])
+
+  @spec killer_fqn(pid() | module()) :: module()
+  @doc false
+  def killer_fqn(name_or_pid \\ default_fqn())
+  def killer_fqn(pid) when is_pid(pid), do: pid
+  def killer_fqn(name), do: Module.concat([name, "Killer"])
 end

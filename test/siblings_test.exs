@@ -10,7 +10,16 @@ defmodule Siblings.Test.Siblings do
   setup do
     %{
       siblings: start_supervised!(Siblings),
-      my_siblings: start_supervised!(Siblings.child_spec(name: MySiblings, lookup: :none)),
+      my_siblings:
+        start_supervised!(
+          Siblings.child_spec(name: MySiblings, lookup: :none, die_with_children: false),
+          restart: :temporary
+        ),
+      my_siblings_with_killer:
+        start_supervised!(
+          Siblings.child_spec(name: MySiblingsWithKiller, lookup: :none, die_with_children: true),
+          restart: :temporary
+        ),
       init_siblings:
         start_supervised!(
           Siblings.child_spec(
@@ -72,6 +81,26 @@ defmodule Siblings.Test.Siblings do
     Process.sleep(200)
 
     assert [] == Siblings.children()
+    assert Process.whereis(MySiblings)
+  end
+
+  test "Worker-FSM with Killer" do
+    Siblings.start_child(Siblings.Test.WorkerFSM, "MyWorkerFSM", %{pid: self()},
+      name: MySiblingsWithKiller,
+      interval: 100
+    )
+
+    assert Process.whereis(MySiblingsWithKiller.Killer)
+
+    assert_receive :s1_s2, 1_000
+    refute_receive :s3_end, 1_000
+
+    Siblings.transition(MySiblingsWithKiller, "MyWorkerFSM", :to_s3, nil)
+    assert_receive :s3_end, 1_000
+
+    Process.sleep(200)
+    refute Process.whereis(MySiblingsWithKiller.Killer)
+    refute Process.whereis(MySiblingsWithKiller)
   end
 
   test "#multi_transition/3" do

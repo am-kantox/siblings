@@ -39,7 +39,7 @@ defmodule Siblings.MixProject do
   defp deps do
     [
       {:finitomata, "~> 0.9"},
-      {:telemetria, "~> 0.12", optional: true, runtime: false},
+      {:telemetria, "~> 0.12", optional: Mix.env() == :prod},
       {:boundary, "~> 0.9", runtime: false},
       # dev / test
       {:credo, "~> 1.0", only: [:dev, :ci]},
