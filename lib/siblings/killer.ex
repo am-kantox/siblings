@@ -17,6 +17,8 @@ defmodule Siblings.Killer do
   @impl GenServer
   def handle_cast({:down, down_info}, %{name: name, pid: pid, callback: callback}) do
     Task.start(fn ->
+      Process.sleep(100)
+
       if Siblings.children(:pids, name) == [] do
         # credo:disable-for-next-line Credo.Check.Refactor.Nesting
         if is_function(callback, 1), do: callback.(down_info)
