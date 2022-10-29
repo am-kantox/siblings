@@ -142,7 +142,11 @@ defmodule Siblings.Lookup do
 
     opts = Map.get(worker_spec, :options, [])
     {shutdown, opts} = Keyword.pop(opts, :shutdown, 5_000)
-    opts = Keyword.put(opts, :lookup, Siblings.lookup(name))
+
+    opts =
+      opts
+      |> Keyword.put(:lookup, Siblings.lookup(name))
+      |> Keyword.put(:killer, Siblings.killer(name))
 
     spec = %{
       id: Enum.join([worker, id], ":"),

@@ -18,7 +18,7 @@ defmodule Siblings do
 
   require Logger
 
-  alias Siblings.{InternalWorker, InternalWorker.State, Lookup, Worker}
+  alias Siblings.{InternalWorker, InternalWorker.State, Lookup, Killer, Worker}
 
   @default_interval Application.compile_env(:siblings, :perform_interval, 5_000)
 
@@ -109,7 +109,7 @@ defmodule Siblings do
           []
       end
 
-    watchdogs = if die_with_children, do: [{SiblingsKiller, [name, self()]}], else: []
+    watchdogs = if die_with_children, do: [{Siblings.Killer, name: name, pid: self()}], else: []
 
     children =
       watchdogs ++
@@ -209,6 +209,45 @@ defmodule Siblings do
   @doc false
   @spec lookup?(module()) :: boolean()
   def lookup?(name \\ default_fqn()), do: not is_nil(lookup(name))
+
+  @doc false
+  @spec killer(module(), true | false | :name | :never) :: nil | pid() | atom()
+  def killer(name \\ default_fqn(), try_cached? \\ true)
+
+  def killer(_name, :never), do: nil
+
+  def killer(name, false) do
+    name
+    |> sup_fqn()
+    |> Process.whereis()
+    |> case do
+      pid when is_pid(pid) ->
+        pid
+        |> Supervisor.which_children()
+        |> Enum.find(&match?({_name, _pid, :worker, [Killer]}, &1))
+        |> case do
+          {_name, pid, :worker, _} -> pid
+          nil -> nil
+        end
+
+      nil ->
+        nil
+    end
+  end
+
+  def killer(name, try_cached?) do
+    fqn = killer_fqn(name)
+
+    case {try_cached?, Process.whereis(fqn)} do
+      {:name, pid} when is_pid(pid) -> fqn
+      {true, pid} when is_pid(pid) -> pid
+      _ -> killer(name, false)
+    end
+  end
+
+  @doc false
+  @spec killer?(module()) :: boolean()
+  def killer?(name \\ default_fqn()), do: not is_nil(killer(name))
 
   @doc false
   @spec pid(module(), Worker.id()) :: pid()
@@ -398,4 +437,10 @@ defmodule Siblings do
   def lookup_fqn(name_or_pid \\ default_fqn())
   def lookup_fqn(pid) when is_pid(pid), do: pid
   def lookup_fqn(name), do: Module.concat([name, "Lookup"])
+
+  @spec killer_fqn(pid() | module()) :: module()
+  @doc false
+  def killer_fqn(name_or_pid \\ default_fqn())
+  def killer_fqn(pid) when is_pid(pid), do: pid
+  def killer_fqn(name), do: Module.concat([name, "Killer"])
 end

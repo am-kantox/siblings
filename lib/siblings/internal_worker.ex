@@ -24,14 +24,14 @@ defmodule Siblings.InternalWorker do
             worker: module(),
             fsm: nil | {reference(), pid()},
             lookup: nil | pid() | GenServer.name(),
-            siblings: nil | pid() | GenServer.name(),
+            killer: nil | pid() | GenServer.name(),
             hibernate?: boolean(),
             offload: nil | (t() -> :ok),
             interval: nil | non_neg_integer(),
             schedule: nil | reference()
           }
 
-    defstruct ~w|id initial_payload worker fsm lookup siblings hibernate? offload interval schedule|a
+    defstruct ~w|id initial_payload worker fsm lookup killer hibernate? offload interval schedule|a
 
     defimpl Inspect do
       @moduledoc false
@@ -47,7 +47,7 @@ defmodule Siblings.InternalWorker do
           fsm: GenServer.call(fsm_pid, :state),
           worker: Function.capture(state.worker, :perform, 3),
           options: [
-            siblings: not is_nil(state.siblings),
+            killer: not is_nil(state.killer),
             lookup: not is_nil(state.lookup),
             hibernate?: state.hibernate?,
             offload: not is_nil(state.offload),
@@ -64,7 +64,7 @@ defmodule Siblings.InternalWorker do
   @type options :: [
           {:interval, nil | non_neg_integer()}
           | {:lookup, nil | pid() | GenServer.name()}
-          | {:siblings, nil | pid() | GenServer.name()}
+          | {:killer, nil | pid() | GenServer.name()}
           | {:name, GenServer.name()}
           | {:hibernate?, boolean()}
           | {:offload, (State.t() -> :ok)}
@@ -74,7 +74,7 @@ defmodule Siblings.InternalWorker do
   @spec start_link(module(), W.id(), W.payload(), opts :: options()) :: GenServer.on_start()
   def start_link(worker, id, payload, opts \\ []) do
     {lookup, opts} = Keyword.pop(opts, :lookup)
-    {siblings, opts} = Keyword.pop(opts, :siblings)
+    {killer, opts} = Keyword.pop(opts, :killer)
     {offload, opts} = Keyword.pop(opts, :offload)
     {hibernate?, opts} = Keyword.pop(opts, :hibernate?, false)
     {interval, opts} = Keyword.pop(opts, :interval)
@@ -87,7 +87,7 @@ defmodule Siblings.InternalWorker do
         initial_payload: payload,
         worker: worker,
         lookup: lookup,
-        siblings: siblings,
+        killer: killer,
         offload: offload,
         hibernate?: hibernate?,
         interval: interval
@@ -205,21 +205,21 @@ defmodule Siblings.InternalWorker do
   def handle_info({:DOWN, ref, :process, pid, :normal}, %State{fsm: {ref, pid}} = state) do
     Process.demonitor(ref)
 
-    if state.siblings do
+    if state.killer do
       down_info = %{
         worker: __MODULE__,
         id: state.id,
         payload: state.initial_payload,
         options: [
           lookup: state.lookup,
-          siblings: state.siblings,
+          killer: state.killer,
           offload: state.offload,
           hibernate?: state.hibernate?,
           interval: state.interval
         ]
       }
 
-      GenServer.cast(state.siblings, {:down, down_info})
+      GenServer.cast(state.killer, {:down, down_info})
     end
 
     {:stop, :normal, state}
