@@ -16,7 +16,7 @@ defmodule Siblings.Killer do
 
   @impl GenServer
   def handle_cast({:down, down_info}, %{name: name, pid: pid, callback: callback}) do
-    Task.start(fn ->
+    spawn(fn ->
       Process.sleep(100)
 
       if Siblings.children(:pids, name) == [] do
