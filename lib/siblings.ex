@@ -18,7 +18,7 @@ defmodule Siblings do
 
   require Logger
 
-  alias Siblings.{InternalWorker, InternalWorker.State, Killer, Lookup, Worker}
+  alias Siblings.{InternalState, InternalWorker, InternalWorker.State, Lookup, Worker}
 
   @default_interval Application.compile_env(:siblings, :perform_interval, 5_000)
 
@@ -112,26 +112,22 @@ defmodule Siblings do
           []
       end
 
-    watchdogs =
-      case die_with_children do
-        {cb, timeout} ->
-          [{Siblings.Killer, name: name, pid: self(), callback: cb, timeout: timeout}]
+    state_opts =
+      [name: name, pid: self()]
+      |> Keyword.merge(
+        case die_with_children do
+          {cb, timeout} -> [callback: cb, timeout: timeout]
+          cb when is_function(cb) -> [callback: cb]
+          true -> [callback: true]
+          _ -> [callback: false]
+        end
+      )
 
-        cb when is_function(cb) ->
-          [{Siblings.Killer, name: name, pid: self(), callback: cb}]
-
-        true ->
-          [{Siblings.Killer, name: name, pid: self(), callback: true}]
-
-        _ ->
-          []
-      end
-
-    children =
-      watchdogs ++
-        [
-          {PartitionSupervisor, child_spec: DynamicSupervisor, name: name}
-        ] ++ helpers
+    children = [
+      {InternalState, state_opts},
+      {PartitionSupervisor, child_spec: DynamicSupervisor, name: name}
+      | helpers
+    ]
 
     Supervisor.init(children, strategy: :one_for_one)
   end
@@ -208,24 +204,24 @@ defmodule Siblings do
   def lookup?(name \\ default_fqn()), do: not is_nil(lookup(name))
 
   @doc false
-  @spec killer(module(), true | false | :name | :never) :: nil | pid() | atom()
-  def killer(name \\ default_fqn(), try_cached? \\ true)
-  def killer(_name, :never), do: nil
-  def killer(name, false), do: find_helper_by_pid(name, Killer)
+  @spec internal_state(module(), true | false | :name | :never) :: nil | pid() | atom()
+  def internal_state(name \\ default_fqn(), try_cached? \\ true)
+  def internal_state(_name, :never), do: nil
+  def internal_state(name, false), do: find_helper_by_pid(name, InternalState)
 
-  def killer(name, try_cached?) do
-    fqn = killer_fqn(name)
+  def internal_state(name, try_cached?) do
+    fqn = internal_state_fqn(name)
 
     case {try_cached?, Process.whereis(fqn)} do
       {:name, pid} when is_pid(pid) -> fqn
       {true, pid} when is_pid(pid) -> pid
-      _ -> killer(name, false)
+      _ -> internal_state(name, false)
     end
   end
 
   @doc false
-  @spec killer?(module()) :: boolean()
-  def killer?(name \\ default_fqn()), do: not is_nil(killer(name))
+  @spec internal_state?(module()) :: boolean()
+  def internal_state?(name \\ default_fqn()), do: not is_nil(internal_state(name))
 
   @spec find_helper_by_pid(module(), module()) :: nil | pid()
   defp find_helper_by_pid(name, module) do
@@ -436,9 +432,9 @@ defmodule Siblings do
   def lookup_fqn(pid) when is_pid(pid), do: pid
   def lookup_fqn(name), do: Module.concat([name, "Lookup"])
 
-  @spec killer_fqn(pid() | module()) :: module()
+  @spec internal_state_fqn(pid() | module()) :: module()
   @doc false
-  def killer_fqn(name_or_pid \\ default_fqn())
-  def killer_fqn(pid) when is_pid(pid), do: pid
-  def killer_fqn(name), do: Module.concat([name, "Killer"])
+  def internal_state_fqn(name_or_pid \\ default_fqn())
+  def internal_state_fqn(pid) when is_pid(pid), do: pid
+  def internal_state_fqn(name), do: Module.concat([name, "InternalState"])
 end

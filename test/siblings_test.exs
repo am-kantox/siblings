@@ -94,7 +94,7 @@ defmodule Siblings.Test.Siblings do
       interval: 100
     )
 
-    assert Process.whereis(MySiblingsWithKiller.Killer)
+    assert Process.whereis(MySiblingsWithKiller.InternalState)
 
     assert_receive :s1_s2, 1_000
     refute_receive :s3_end, 1_000
@@ -103,7 +103,7 @@ defmodule Siblings.Test.Siblings do
     assert_receive :s3_end, 1_000
 
     Process.sleep(200)
-    refute Process.whereis(MySiblingsWithKiller.Killer)
+    refute Process.whereis(MySiblingsWithKiller.InternalState)
     refute Process.whereis(MySiblingsWithKiller)
   end
 

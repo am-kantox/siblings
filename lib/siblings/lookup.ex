@@ -146,7 +146,7 @@ defmodule Siblings.Lookup do
     opts =
       opts
       |> Keyword.put(:lookup, Siblings.lookup(name))
-      |> Keyword.put(:killer, Siblings.killer(name))
+      |> Keyword.put(:internal_state, Siblings.internal_state(name))
 
     spec = %{
       id: Enum.join([worker, id], ":"),

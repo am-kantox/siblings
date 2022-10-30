@@ -1,4 +1,4 @@
-defmodule Siblings.Killer do
+defmodule Siblings.InternalState do
   @moduledoc false
 
   use GenServer
@@ -13,7 +13,7 @@ defmodule Siblings.Killer do
       |> Map.put_new(:payload, %{})
       |> Map.put_new(:timeout, 5_000)
 
-    GenServer.start_link(__MODULE__, state, name: Siblings.killer_fqn(state.name))
+    GenServer.start_link(__MODULE__, state, name: Siblings.internal_state_fqn(state.name))
   end
 
   @impl GenServer
