@@ -102,6 +102,7 @@ end
 
 ## Changelog
 
+* `0.10.3` — accept `{(any() -> :ok), timeout}` as `die_with_children`, write-only `InternalState`
 * `0.10.2` — accept `(any() -> :ok)` as `die_with_children` option as a callback
 * `0.10.0` — `die_with_children: boolean()` option 
 * `0.8.2` — updated with last `finitomata` compiler
