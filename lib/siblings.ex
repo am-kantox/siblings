@@ -45,9 +45,9 @@ defmodule Siblings do
 
   - `name: atom()` which is a name of the `Siblings` instance, defaults to `Siblings`
   - `workers: list()` the list of the workers to start imminently upon `Siblings` start
-  - `die_with_children: true | false | (-> :ok)` shutdown the process when there is
-    no more active child, defaults to `false` (if a function of arity 0 is given, it’ll
-    be called before the process shuts down)
+  - `die_with_children: true | false | (-> :ok) | {(-> :ok), timeout}` shutdown
+    the process when there is no more active child, defaults to `false`
+    (if a function of arity 0 is given, it’ll be called before the process shuts down)
   - `callbacks: list()` the list of the handler to call back upon `Lookup` transitions
   """
   def start_link(opts \\ []) do
@@ -113,9 +113,19 @@ defmodule Siblings do
       end
 
     watchdogs =
-      if die_with_children,
-        do: [{Siblings.Killer, name: name, pid: self(), callback: die_with_children}],
-        else: []
+      case die_with_children do
+        {cb, timeout} ->
+          [{Siblings.Killer, name: name, pid: self(), callback: cb, timeout: timeout}]
+
+        cb when is_function(cb) ->
+          [{Siblings.Killer, name: name, pid: self(), callback: cb}]
+
+        true ->
+          [{Siblings.Killer, name: name, pid: self(), callback: true}]
+
+        _ ->
+          []
+      end
 
     children =
       watchdogs ++

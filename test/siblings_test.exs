@@ -20,7 +20,7 @@ defmodule Siblings.Test.Siblings do
           Siblings.child_spec(
             name: MySiblingsWithKiller,
             lookup: :none,
-            die_with_children: fn data -> assert %{id: "MyWorkerFSM"} = data end
+            die_with_children: {fn data -> assert %{} = data end, 100}
           ),
           restart: :temporary
         ),
@@ -102,7 +102,7 @@ defmodule Siblings.Test.Siblings do
     Siblings.transition(MySiblingsWithKiller, "MyWorkerFSM", :to_s3, nil)
     assert_receive :s3_end, 1_000
 
-    Process.sleep(5_100)
+    Process.sleep(200)
     refute Process.whereis(MySiblingsWithKiller.Killer)
     refute Process.whereis(MySiblingsWithKiller)
   end
