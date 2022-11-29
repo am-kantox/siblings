@@ -24,6 +24,7 @@ defmodule Siblings.InternalWorker do
             worker: module(),
             fsm: nil | {reference(), pid()},
             lookup: nil | pid() | GenServer.name(),
+            throttler: %{optional({module(), atom()}) => GenServer.name()},
             internal_state: nil | pid() | GenServer.name(),
             hibernate?: boolean(),
             offload: nil | (t() -> :ok),
@@ -31,7 +32,7 @@ defmodule Siblings.InternalWorker do
             schedule: nil | reference()
           }
 
-    defstruct ~w|id initial_payload worker fsm lookup internal_state hibernate? offload interval schedule|a
+    defstruct ~w|id initial_payload worker fsm lookup throttler internal_state hibernate? offload interval schedule|a
 
     defimpl Inspect do
       @moduledoc false
@@ -49,6 +50,7 @@ defmodule Siblings.InternalWorker do
           options: [
             internal_state: not is_nil(state.internal_state),
             lookup: not is_nil(state.lookup),
+            throttler: map_size(state.throttler) > 0,
             hibernate?: state.hibernate?,
             offload: not is_nil(state.offload),
             interval: state.interval
@@ -64,6 +66,7 @@ defmodule Siblings.InternalWorker do
   @type options :: [
           {:interval, nil | non_neg_integer()}
           | {:lookup, nil | pid() | GenServer.name()}
+          | {:throttler, %{optional({module(), atom()}) => GenServer.name()}}
           | {:internal_state, nil | pid() | GenServer.name()}
           | {:name, GenServer.name()}
           | {:hibernate?, boolean()}
@@ -74,6 +77,7 @@ defmodule Siblings.InternalWorker do
   @spec start_link(module(), W.id(), W.payload(), opts :: options()) :: GenServer.on_start()
   def start_link(worker, id, payload, opts \\ []) do
     {lookup, opts} = Keyword.pop(opts, :lookup)
+    {throttler, opts} = Keyword.pop(opts, :throttler, %{})
     {internal_state, opts} = Keyword.pop(opts, :internal_state)
     {offload, opts} = Keyword.pop(opts, :offload)
     {hibernate?, opts} = Keyword.pop(opts, :hibernate?, false)
@@ -87,6 +91,7 @@ defmodule Siblings.InternalWorker do
         initial_payload: payload,
         worker: worker,
         lookup: lookup,
+        throttler: throttler,
         internal_state: internal_state,
         offload: offload,
         hibernate?: hibernate?,
@@ -278,8 +283,17 @@ defmodule Siblings.InternalWorker do
 
   defp safe_perform(%State{fsm: {_ref, pid}} = state) do
     %Finitomata.State{current: current, payload: payload} = GenServer.call(pid, :state)
-    state.worker.perform(current, state.id, payload)
+    throttler = Map.get(state.throttler, {state.worker, current})
+    maybe_throttled_perform(state.worker, current, state.id, payload, throttler)
   rescue
     err -> Exception.message(err)
+  end
+
+  defp maybe_throttled_perform(module, state, id, payload, nil) do
+    module.perform(state, id, payload)
+  end
+
+  defp maybe_throttled_perform(module, state, id, payload, throttler) do
+    Siblings.Throttler.call(throttler, fn -> module.perform(state, id, payload) end).result
   end
 end

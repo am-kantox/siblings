@@ -107,6 +107,26 @@ defmodule Siblings.Test.Siblings do
     refute Process.whereis(MySiblingsWithKiller)
   end
 
+  test "Worker-FSM with Throttler" do
+    Siblings.start_child(Siblings.Test.WorkerFSM, "MyWorkerFSM", %{pid: self()},
+      name: MySiblingsWithKiller,
+      interval: 100,
+      throttler: [:s2]
+    )
+
+    assert Process.whereis(MySiblingsWithKiller.InternalState)
+
+    assert_receive :s1_s2, 1_000
+    refute_receive :s3_end, 1_000
+
+    Siblings.transition(MySiblingsWithKiller, "MyWorkerFSM", :to_s3, nil)
+    assert_receive :s3_end, 1_000
+
+    Process.sleep(200)
+    refute Process.whereis(MySiblingsWithKiller.InternalState)
+    refute Process.whereis(MySiblingsWithKiller)
+  end
+
   test "#multi_transition/3" do
     Siblings.start_child(Siblings.Test.NoPerform, "NoPerform1", %{pid: self()}, interval: 60_000)
     Siblings.start_child(Siblings.Test.NoPerform, "NoPerform2", %{pid: self()}, interval: 60_000)

@@ -9,7 +9,7 @@ defmodule Siblings.Test.WorkerFSM do
   s2 --> |to_s3| s3
   """
 
-  use Finitomata, @fsm
+  use Finitomata, fsm: @fsm
 
   def on_transition(:s1, :to_s2, nil, %{pid: pid} = payload) do
     send(pid, :s1_s2)

@@ -33,6 +33,9 @@ defmodule Siblings.Throttler.Producer do
       {fun, args} when is_function(fun, 1) and is_list(args) ->
         %Throttler{from: from, fun: fun, args: args}
 
+      fun when is_function(fun, 0) ->
+        %Throttler{from: from, fun: fun, args: []}
+
       value ->
         %Throttler{from: from, fun: &Throttler.debug/1, args: [value: value]}
     end)

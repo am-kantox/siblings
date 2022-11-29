@@ -142,10 +142,14 @@ defmodule Siblings.Lookup do
 
     opts = Map.get(worker_spec, :options, [])
     {shutdown, opts} = Keyword.pop(opts, :shutdown, 5_000)
+    {throttler, opts} = Keyword.pop(opts, :throttler, [])
+
+    throttler = for thr <- throttler, into: %{}, do: {{worker, thr}, name}
 
     opts =
       opts
       |> Keyword.put(:lookup, Siblings.lookup(name))
+      |> Keyword.put(:throttler, throttler)
       |> Keyword.put(:internal_state, Siblings.internal_state(name))
 
     spec = %{

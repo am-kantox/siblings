@@ -83,7 +83,11 @@ defmodule Siblings.Throttler.Consumer do
   @spec perform([Throttler.t()]) :: :ok
   defp perform(events) do
     Enum.each(events, fn %Throttler{from: from, fun: fun, args: args} = throttler ->
-      result = fun.(args)
+      result =
+        case fun do
+          f when is_function(f, 0) -> f.()
+          f when is_function(f, 1) -> f.(args)
+        end
 
       case from do
         {pid, _alias_ref} when is_pid(pid) ->

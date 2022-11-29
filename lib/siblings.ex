@@ -45,6 +45,7 @@ defmodule Siblings do
 
   - `name: atom()` which is a name of the `Siblings` instance, defaults to `Siblings`
   - `workers: list()` the list of the workers to start imminently upon `Siblings` start
+  - `throttler: keyword()` the throttler options, see `Siblings.Throttler` for details
   - `die_with_children: true | false | (-> :ok) | {(-> :ok), timeout}` shutdown
     the process when there is no more active child, defaults to `false`
     (if a function of arity 0 is given, it’ll be called before the process shuts down)
@@ -101,10 +102,11 @@ defmodule Siblings do
   def init(opts) do
     {name, opts} = Keyword.pop(opts, :name, default_fqn())
     {lookup, opts} = Keyword.pop(opts, :lookup, true)
+    {throttler, opts} = Keyword.pop(opts, :throttler, [])
     {die_with_children, _opts} = Keyword.pop(opts, :die_with_children, false)
 
     helpers = [
-      {Siblings.Throttler, name: name, initial: [], max_demand: 3, interval: 1_000}
+      {Siblings.Throttler, Keyword.put(throttler, :name, name)}
       | case lookup do
           true ->
             [{Lookup, payload: %{name: lookup_fqn(name), siblings: name}, name: lookup_fqn(name)}]
