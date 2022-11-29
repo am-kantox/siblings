@@ -1,9 +1,18 @@
 defmodule Siblings.Throttler do
   @moduledoc """
-  The internal definition of the call to throttle. The result will be send to
-  `from` as `{:throttler, result}`.
+  The internal definition of the call to throttle.
+
+  `Siblings.Throttler.call/3` is a blocking call similar to `GenServer.call/3`, but
+    served by the underlying `GenStage` producer-consumer pair.
+
+  Despite this implementation of throttling based on `GenStage` is provided
+    mostly for internal needs, it is generic enough to use wherever. Use the childspec
+    `{Siblings.Throttler, name: name, initial: [], max_demand: 3, interval: 1_000}`
+    to start a throttling process and `Siblings.Throttler.call/3` to perform throttled
+    synchronous calls from different processes.
   """
 
+  @typedoc "The _in/out_ parameter for calls to `Siblings.Throttler.call/3`"
   @type t :: %{
           __struct__: Siblings.Throttler,
           from: GenServer.from(),
@@ -13,6 +22,7 @@ defmodule Siblings.Throttler do
           payload: any()
         }
 
+  @typedoc "The simplified _in_ parameter for calls to `Siblings.Throttler.call/3`"
   @type throttlee :: t() | {(keyword() -> any()), [any()]}
 
   defstruct ~w|from fun args result payload|a
@@ -23,12 +33,22 @@ defmodule Siblings.Throttler do
 
   alias Siblings.Throttler.{Consumer, Producer}
 
+  @doc """
+  Starts the throttler with the underlying producer-consumer stages.
+
+  Accepted options are:
+
+  - `name` the base name for the throttler to be used in calls to `call/3`
+  - `initial` the initial load of requests (avoid using it unless really needed)
+  - `max_demand`, `initial` the options to be passed directly to `GenStage`’s consumer
+  """
   def start_link(opts) do
     name = Keyword.get(opts, :name, Siblings.default_fqn())
     opts = Keyword.put_new(opts, :name, name)
     Supervisor.start_link(__MODULE__, opts, name: Siblings.throttler_fqn(name))
   end
 
+  @doc false
   @impl Supervisor
   def init(opts) do
     {initial, opts} = Keyword.pop(opts, :initial, [])
@@ -55,17 +75,29 @@ defmodule Siblings.Throttler do
     flags
   end
 
-  def add(name \\ Siblings.default_fqn(), request)
+  @doc """
+  Synchronously executes the function, using throttling based on `GenStage`.
 
-  def add(name, requests) when is_list(requests) do
+  This function has a default timeout `:infinity` because of its nature
+    (throttling is supposed to take a while,) but it might be passed as the third
+    argument in a call to `call/3`.
+
+  If a list of functions is given, executes all of them in parallel,
+    collects the results, and then returns them to the caller.
+
+  The function might be given as `t:Siblings.Throttler.t()` or
+    in a simplified form as `{function_of_arity_1, arg}`.
+  """
+  def call(name \\ Siblings.default_fqn(), request, timeout \\ :infinity)
+
+  def call(name, requests, timeout) when is_list(requests) do
     requests
-    |> Enum.map(&Task.async(Siblings.Throttler, :add, [name, &1]))
+    |> Enum.map(&Task.async(Siblings.Throttler, :call, [name, &1, timeout]))
     |> Task.await_many()
   end
 
-  def add(name, request) do
-    GenStage.call(producer(name), {:add, request}, :infinity)
-  end
+  def call(name, request, timeout),
+    do: GenStage.call(producer(name), {:add, request}, timeout)
 
   @doc false
   def debug(anything, opts \\ []) do

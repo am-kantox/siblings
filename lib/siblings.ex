@@ -104,7 +104,7 @@ defmodule Siblings do
     {die_with_children, _opts} = Keyword.pop(opts, :die_with_children, false)
 
     helpers = [
-      {Siblings.Throttler, initial: [1, 2], max_demand: 3, interval: 1_000}
+      {Siblings.Throttler, name: name, initial: [], max_demand: 3, interval: 1_000}
       | case lookup do
           true ->
             [{Lookup, payload: %{name: lookup_fqn(name), siblings: name}, name: lookup_fqn(name)}]

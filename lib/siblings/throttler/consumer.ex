@@ -60,7 +60,10 @@ defmodule Siblings.Throttler.Consumer do
   def handle_info({:ask, from}, producers),
     do: {:noreply, [], ask_and_schedule(producers, from)}
 
-  defp ask_and_schedule(%{__throttler_options__: %{max_demand: max_demand, interval: interval}} = producers, from) do
+  defp ask_and_schedule(
+         %{__throttler_options__: %{max_demand: max_demand, interval: interval}} = producers,
+         from
+       ) do
     case producers do
       %{^from => {0, _interval}} ->
         GenStage.ask(from, max_demand)
