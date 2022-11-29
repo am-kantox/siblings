@@ -5,73 +5,115 @@ defmodule Siblings.Throttler do
   """
 
   @type t :: %{
-    __struct__: Siblings.Throttler,
-    from: pid(),
-    fun: function()
-  }
+          __struct__: Siblings.Throttler,
+          from: pid(),
+          fun: (keyword() -> any()),
+          args: keyword(),
+          result: any(),
+          payload: any()
+        }
 
-  defstruct ~w|from fun|a
+  @type throttlee :: t() | {(keyword() -> any()), [any()]}
+
+  defstruct ~w|from fun args result payload|a
 
   defmodule Producer do
     @moduledoc false
     use GenStage
 
-    @spec init([Siblings.Throttler.t()]) :: {:producer, [Siblings.Throttler.t()]}
-    def init(initial) when is_list(initial), do: {:producer, initial}
+    alias Siblings.Throttler
 
+    def start_link(initial \\ []),
+      do: GenStage.start_link(__MODULE__, initial)
+
+    @spec init([Throttler.throttlee()]) :: {:producer, [Throttler.throttlee()]}
+    @impl GenStage
+    def init(initial) when is_list(initial),
+      do: {:producer, normalize(nil, initial)}
+
+    @impl GenStage
     def handle_demand(demand, initial) when demand > 0 do
       {head, tail} = Enum.split(initial, demand)
       {:noreply, head, tail}
     end
 
-    def handle_cast({:add, items}, state), do: {:noreply, [], state ++ items}
+    @impl GenStage
+    def handle_call({:add, items}, from, state) when is_list(items),
+      do: {:noreply, [], state ++ normalize(from, items)}
+
+    def handle_call({:add, item}, from, state),
+      do: handle_call({:add, [item]}, from, state)
+
+    defp normalize(from, items) do
+      Enum.map(items, fn
+        %Throttler{} = t ->
+          %Throttler{t | from: from}
+
+        {fun, args} when is_function(fun, 1) and is_list(args) ->
+          %Throttler{from: from, fun: fun, args: args}
+
+        value ->
+          %Throttler{from: from, fun: &IO.inspect/1, args: [value: value]}
+      end)
+    end
   end
 
   defmodule Consumer do
     @moduledoc false
     use GenStage
 
-    def init(_) do
-      {:consumer, %{}}
+    @throttler_options Application.compile_env(:siblings, :throttler, [])
+    @max_demand Keyword.get(@throttler_options, :max_demand, 10)
+    @interval Keyword.get(@throttler_options, :interval, 5000)
+
+    def start_link(initial \\ :ok),
+      do: GenStage.start_link(__MODULE__, initial)
+
+    @impl GenStage
+    def init(opts) do
+      max_demand = Keyword.get(opts, :max_demand, @max_demand)
+      interval = Keyword.get(opts, :interval, @interval)
+
+      {:consumer, %{__throttler_options__: [max_demand: max_demand, interval: interval]}}
     end
 
+    @impl GenStage
     def handle_subscribe(:producer, opts, from, producers) do
-      # We will only allow max_demand events every 5000 milliseconds
-      pending = opts[:max_demand] || 1000
-      interval = opts[:interval] || 5000
+      max_demand =
+        Keyword.get_lazy(opts, :max_demand, fn ->
+          get_in(producers, ~w|__throttler_options__ max_demand|a)
+        end)
 
-      # Register the producer in the state
-      producers = Map.put(producers, from, {pending, interval})
-      # Ask for the pending events and schedule the next time around
-      producers = ask_and_schedule(producers, from)
+      interval =
+        Keyword.get_lazy(opts, :interval, fn ->
+          get_in(producers, ~w|__throttler_options__ interval|a)
+        end)
 
-      # Returns manual as we want control over the demand
+      producers = producers |> Map.put(from, {max_demand, interval}) |> ask_and_schedule(from)
+
+      # `manual` to control over the demand
       {:manual, producers}
     end
 
-    def handle_cancel(_, from, producers) do
-      # Remove the producers from the map on unsubscribe
-      {:noreply, [], Map.delete(producers, from)}
-    end
+    @impl GenStage
+    def handle_cancel(_, from, producers),
+      do: {:noreply, [], Map.delete(producers, from)}
 
+    @impl GenStage
     def handle_events(events, from, producers) do
-      # Bump the amount of pending events for the given producer
       producers =
         Map.update!(producers, from, fn {pending, interval} ->
           {pending + length(events), interval}
         end)
 
-      # Consume the events by printing them.
-      IO.inspect(events)
+      perform(events)
 
-      # A producer_consumer would return the processed events here.
       {:noreply, [], producers}
     end
 
-    def handle_info({:ask, from}, producers) do
-      # This callback is invoked by the Process.send_after/3 message below.
-      {:noreply, [], ask_and_schedule(producers, from)}
-    end
+    @impl GenStage
+    def handle_info({:ask, from}, producers),
+      do: {:noreply, [], ask_and_schedule(producers, from)}
 
     defp ask_and_schedule(producers, from) do
       case producers do
@@ -84,14 +126,75 @@ defmodule Siblings.Throttler do
           producers
       end
     end
+
+    @spec perform([Throttler.t()]) :: :ok
+    defp perform(events) do
+      Enum.each(events, fn %{from: from, fun: fun, args: args} = throttler ->
+        result = fun.(args)
+
+        case from do
+          pid when is_pid(pid) ->
+            GenStage.reply(from, %{throttler | result: result})
+
+          {pid, _alias_ref} when is_pid(pid) ->
+            GenStage.reply(from, %{throttler | result: result})
+
+          nil ->
+            IO.inspect(%{throttler | result: result})
+        end
+      end)
+    end
+  end
+
+  use Supervisor
+
+  alias Siblings.Throttler.{Consumer, Producer}
+
+  def start_link(opts) do
+    name = Keyword.get(opts, :name, Siblings.default_fqn())
+    opts = Keyword.put_new(opts, :name, name)
+    Supervisor.start_link(__MODULE__, opts, name: Siblings.throttler_fqn(name))
+  end
+
+  @impl Supervisor
+  def init(opts) do
+    {initial, opts} = Keyword.pop(opts, :initial, [])
+    {name, opts} = Keyword.pop!(opts, :name)
+
+    children = [
+      {Producer, initial},
+      {Consumer, opts}
+    ]
+
+    flags = Supervisor.init(children, strategy: :one_for_one)
+
+    Task.start_link(fn ->
+      opts =
+        opts
+        |> Keyword.take(~w|max_demand interval|)
+        |> Keyword.put(:to, producer(name))
+
+      GenStage.sync_subscribe(consumer(name), opts)
+    end)
+
+    flags
+  end
+
+  def producer(name \\ Siblings.default_fqn()), do: lookup(Producer, name)
+  def consumer(name \\ Siblings.default_fqn()), do: lookup(Consumer, name)
+
+  defp lookup(who, name) do
+    name
+    |> Siblings.throttler_fqn()
+    |> Supervisor.which_children()
+    |> Enum.find(&match?({_name, _pid, :worker, [^who]}, &1))
+    |> case do
+      {_, pid, _, _} when is_pid(pid) -> pid
+      _ -> nil
+    end
   end
 end
 
-{:ok, producer} = GenStage.start_link(Siblings.Throttler.Producer, Enum.to_list(1..100))
-{:ok, consumer} = GenStage.start_link(Siblings.Throttler.Consumer, :ok)
-
-GenServer.cast(producer, {:add, Enum.to_list(101..200)})
-
-# Ask for 10 items every 2 seconds.
-GenStage.sync_subscribe(consumer, to: producer, max_demand: 10, interval: 2000)
+Siblings.Throttler.start_link(initial: Enum.to_list(1..100))
+GenStage.call(Siblings.Throttler.producer(), {:add, Enum.to_list(101..200)}, :infinity)
 Process.sleep(:infinity)

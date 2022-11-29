@@ -437,4 +437,10 @@ defmodule Siblings do
   def internal_state_fqn(name_or_pid \\ default_fqn())
   def internal_state_fqn(pid) when is_pid(pid), do: pid
   def internal_state_fqn(name), do: Module.concat([name, "InternalState"])
+
+  @spec throttler_fqn(pid() | module()) :: module()
+  @doc false
+  def throttler_fqn(name_or_pid \\ default_fqn())
+  def throttler_fqn(pid) when is_pid(pid), do: pid
+  def throttler_fqn(name), do: Module.concat([name, "Throttler"])
 end
