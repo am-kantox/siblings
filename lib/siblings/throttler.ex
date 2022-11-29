@@ -55,8 +55,16 @@ defmodule Siblings.Throttler do
     flags
   end
 
-  def add(name \\ Siblings.default_fqn(), requests) do
-    GenStage.call(producer(name), {:add, requests}, :infinity)
+  def add(name \\ Siblings.default_fqn(), request)
+
+  def add(name, requests) when is_list(requests) do
+    requests
+    |> Enum.map(&Task.async(Siblings.Throttler, :add, [name, &1]))
+    |> Task.await_many()
+  end
+
+  def add(name, request) do
+    GenStage.call(producer(name), {:add, request}, :infinity)
   end
 
   @doc false

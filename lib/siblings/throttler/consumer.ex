@@ -16,7 +16,7 @@ defmodule Siblings.Throttler.Consumer do
     max_demand = Keyword.get(opts, :max_demand, @max_demand)
     interval = Keyword.get(opts, :interval, @interval)
 
-    {:consumer, %{__throttler_options__: [max_demand: max_demand, interval: interval]}}
+    {:consumer, %{__throttler_options__: %{max_demand: max_demand, interval: interval}}}
   end
 
   @impl GenStage
@@ -31,7 +31,10 @@ defmodule Siblings.Throttler.Consumer do
         get_in(producers, ~w|__throttler_options__ interval|a)
       end)
 
-    producers = producers |> Map.put(from, {max_demand, interval}) |> ask_and_schedule(from)
+    producers =
+      producers
+      |> Map.put(from, {max_demand, interval})
+      |> ask_and_schedule(from)
 
     # `manual` to control over the demand
     {:manual, producers}
@@ -57,8 +60,13 @@ defmodule Siblings.Throttler.Consumer do
   def handle_info({:ask, from}, producers),
     do: {:noreply, [], ask_and_schedule(producers, from)}
 
-  defp ask_and_schedule(producers, from) do
+  defp ask_and_schedule(%{__throttler_options__: %{max_demand: max_demand, interval: interval}} = producers, from) do
     case producers do
+      %{^from => {0, _interval}} ->
+        GenStage.ask(from, max_demand)
+        Process.send_after(self(), {:ask, from}, interval)
+        producers
+
       %{^from => {pending, interval}} ->
         GenStage.ask(from, pending)
         Process.send_after(self(), {:ask, from}, interval)

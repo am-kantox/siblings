@@ -13,8 +13,8 @@ defmodule Siblings.Throttler.Producer do
     do: {:producer, normalize(nil, initial)}
 
   @impl GenStage
-  def handle_demand(demand, initial) when demand > 0 do
-    {head, tail} = Enum.split(initial, demand)
+  def handle_demand(demand, items) when demand > 0 do
+    {head, tail} = Enum.split(items, demand)
     {:noreply, head, tail}
   end
 
