@@ -103,14 +103,16 @@ defmodule Siblings do
     {lookup, opts} = Keyword.pop(opts, :lookup, true)
     {die_with_children, _opts} = Keyword.pop(opts, :die_with_children, false)
 
-    helpers =
-      case lookup do
-        true ->
-          [{Lookup, payload: %{name: lookup_fqn(name), siblings: name}, name: lookup_fqn(name)}]
+    helpers = [
+      {Siblings.Throttler, initial: Enum.to_list(1..100)}
+      | case lookup do
+          true ->
+            [{Lookup, payload: %{name: lookup_fqn(name), siblings: name}, name: lookup_fqn(name)}]
 
-        _ ->
-          []
-      end
+          _ ->
+            []
+        end
+    ]
 
     state_opts =
       [name: name, pid: self()]
