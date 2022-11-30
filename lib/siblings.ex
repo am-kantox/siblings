@@ -45,6 +45,7 @@ defmodule Siblings do
 
   - `name: atom()` which is a name of the `Siblings` instance, defaults to `Siblings`
   - `workers: list()` the list of the workers to start imminently upon `Siblings` start
+  - `throttler: keyword()` the throttler options, see `Siblings.Throttler` for details
   - `die_with_children: true | false | (-> :ok) | {(-> :ok), timeout}` shutdown
     the process when there is no more active child, defaults to `false`
     (if a function of arity 0 is given, it’ll be called before the process shuts down)
@@ -101,16 +102,19 @@ defmodule Siblings do
   def init(opts) do
     {name, opts} = Keyword.pop(opts, :name, default_fqn())
     {lookup, opts} = Keyword.pop(opts, :lookup, true)
+    {throttler, opts} = Keyword.pop(opts, :throttler, [])
     {die_with_children, _opts} = Keyword.pop(opts, :die_with_children, false)
 
-    helpers =
-      case lookup do
-        true ->
-          [{Lookup, payload: %{name: lookup_fqn(name), siblings: name}, name: lookup_fqn(name)}]
+    helpers = [
+      {Siblings.Throttler, Keyword.put(throttler, :name, name)}
+      | case lookup do
+          true ->
+            [{Lookup, payload: %{name: lookup_fqn(name), siblings: name}, name: lookup_fqn(name)}]
 
-        _ ->
-          []
-      end
+          _ ->
+            []
+        end
+    ]
 
     state_opts =
       [name: name, pid: self()]
@@ -437,4 +441,10 @@ defmodule Siblings do
   def internal_state_fqn(name_or_pid \\ default_fqn())
   def internal_state_fqn(pid) when is_pid(pid), do: pid
   def internal_state_fqn(name), do: Module.concat([name, "InternalState"])
+
+  @spec throttler_fqn(pid() | module()) :: module()
+  @doc false
+  def throttler_fqn(name_or_pid \\ default_fqn())
+  def throttler_fqn(pid) when is_pid(pid), do: pid
+  def throttler_fqn(name), do: Module.concat([name, "Throttler"])
 end

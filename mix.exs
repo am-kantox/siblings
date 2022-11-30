@@ -41,6 +41,7 @@ defmodule Siblings.MixProject do
       {:finitomata, "~> 0.9"},
       {:telemetria, "~> 0.12", optional: Mix.env() == :prod},
       {:boundary, "~> 0.9", runtime: false},
+      {:gen_stage, "~> 1.0"},
       # dev / test
       {:credo, "~> 1.0", only: [:dev, :ci]},
       {:dialyxir, "~> 1.0", only: [:dev, :test, :ci], runtime: false},
