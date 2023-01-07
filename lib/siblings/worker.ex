@@ -36,7 +36,7 @@ defmodule Siblings.Worker do
   It will be used internally to carry the state of FSM.
   If not implemented, this module itself will be considered an FSM implementation.
   """
-  @callback fsm :: module()
+  @callback finitomata :: module()
 
   @doc """
   The function to re-initialize FSM after crash.
@@ -49,5 +49,5 @@ defmodule Siblings.Worker do
   """
   @callback on_call(message :: message(), State.t()) :: {result :: call_result(), State.t()}
 
-  @optional_callbacks fsm: 0, on_init: 1, on_call: 2
+  @optional_callbacks finitomata: 0, on_init: 1, on_call: 2
 end

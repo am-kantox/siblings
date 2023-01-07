@@ -6,7 +6,7 @@ defmodule Siblings.Test.Worker do
   @behaviour Siblings.Worker
 
   @impl Siblings.Worker
-  def fsm, do: Siblings.Test.FSM
+  def finitomata, do: Siblings.Test.FSM
 
   @impl Siblings.Worker
   def perform(:s1, id, payload) do

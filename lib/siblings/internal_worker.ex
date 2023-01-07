@@ -263,8 +263,10 @@ defmodule Siblings.InternalWorker do
   defp start_fsm(%State{worker: worker, fsm: nil} = state) do
     Code.ensure_loaded!(worker)
 
-    fsm_impl = if function_exported?(worker, :fsm, 0), do: worker.fsm(), else: worker
-    {:ok, fsm} = fsm_impl.start_link(state.initial_payload)
+    finitomata =
+      if function_exported?(worker, :finitomata, 0), do: worker.finitomata(), else: worker
+
+    {:ok, fsm} = finitomata.start_link(state.initial_payload)
     start_fsm(%State{state | fsm: {Process.monitor(fsm), fsm}})
   end
 
