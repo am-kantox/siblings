@@ -102,6 +102,7 @@ end
 
 ## Changelog
 
+* `0.11.2` — [FIX] wrong specs for `start_link/1` and `child_spec/1`
 * `0.11.1` — upgraded to `Finitomata` (`v0.11.0`)
 * `0.11.0` — throttler → generic + on perform
 * `0.10.3` — accept `{(any() -> :ok), timeout}` as `die_with_children`, write-only `InternalState`

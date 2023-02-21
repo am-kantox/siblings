@@ -29,6 +29,14 @@ defmodule Siblings do
           options: InternalWorker.options()
         }
 
+  @type start_options :: [
+          {:name, atom()}
+          | {:workers, [worker() | {module(), keyword()}]}
+          | {:callbacks, [function()]}
+          | {:throttler, keyword()}
+          | {:die_with_children, boolean() | (() -> :ok) | {(() -> :ok), non_neg_integer()}}
+        ]
+
   @doc """
   Starts the supervision subtree, holding the `PartitionSupervisor`.
 
@@ -51,6 +59,7 @@ defmodule Siblings do
     (if a function of arity 0 is given, it’ll be called before the process shuts down)
   - `callbacks: list()` the list of the handler to call back upon `Lookup` transitions
   """
+  @spec start_link(start_options()) :: Supervisor.on_start()
   def start_link(opts \\ []) do
     {name, opts} =
       Keyword.get_and_update(opts, :name, fn
@@ -142,10 +151,7 @@ defmodule Siblings do
 
   Useful when many `Siblings` processes are running simultaneously.
   """
-  @spec child_spec([
-          {:name, module()} | {:lookup, boolean() | module()} | {:id, any()} | keyword()
-        ]) ::
-          Supervisor.child_spec()
+  @spec child_spec(start_options()) :: Supervisor.child_spec()
   def child_spec(opts) do
     {id, opts} = Keyword.pop(opts, :id, Keyword.get(opts, :name, default_fqn()))
     %{id: id, start: {Siblings, :start_link, [opts]}}
