@@ -197,7 +197,7 @@ defmodule Siblings.InternalWorker do
           interval
 
         {:error, error} ->
-          Logger.warn("Worker.perform/2 raised (#{error})")
+          Logger.warning("Worker.perform/2 raised (#{error})")
           state.interval
       end
 
@@ -233,7 +233,7 @@ defmodule Siblings.InternalWorker do
   @doc false
   @impl GenServer
   def handle_info({:DOWN, ref, :process, pid, reason}, %State{fsm: {ref, pid}} = state) do
-    Logger.warn(
+    Logger.warning(
       "FSM has crashed (reason: #{inspect(reason)}), IMPLEMENT CALLBACK `on_init` TO REINIT"
     )
 

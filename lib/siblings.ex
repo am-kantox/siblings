@@ -34,7 +34,7 @@ defmodule Siblings do
           | {:workers, [worker() | {module(), keyword()}]}
           | {:callbacks, [function()]}
           | {:throttler, keyword()}
-          | {:die_with_children, boolean() | (() -> :ok) | {(() -> :ok), non_neg_integer()}}
+          | {:die_with_children, boolean() | (-> :ok) | {(-> :ok), non_neg_integer()}}
         ]
 
   @doc """
@@ -93,7 +93,7 @@ defmodule Siblings do
         case lookup(name) do
           nil ->
             # credo:disable-for-next-line Credo.Check.Refactor.Nesting
-            if [] != workers, do: Logger.warn("workers without lookup are not [yet] supported")
+            if [] != workers, do: Logger.warning("workers without lookup are not [yet] supported")
 
           fsm when is_pid(fsm) or is_atom(fsm) ->
             GenServer.cast(fsm, {:initialize, %{workers: workers, callbacks: callbacks}})
