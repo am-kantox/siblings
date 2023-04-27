@@ -34,7 +34,7 @@ defmodule Siblings do
           | {:workers, [worker() | {module(), keyword()}]}
           | {:callbacks, [function()]}
           | {:throttler, keyword()}
-          | {:die_with_children, boolean() | (-> :ok) | {(-> :ok), non_neg_integer()}}
+          | {:die_with_children, boolean() | (() -> :ok) | {(() -> :ok), non_neg_integer()}}
         ]
 
   @doc """
