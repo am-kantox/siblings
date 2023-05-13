@@ -8,7 +8,7 @@
 all having the lifecycle _and_ the _FSM_ behind.
 
 Consider the service, that polls the market rates from several
-diffferent sources, allowing semi-automated trading based
+different sources, allowing semi-automated trading based
 on predefined conditions. For each bid, the process is to be spawn,
 polling the external resources. Once the bid condition is met,
 the bid gets traded.
@@ -23,7 +23,7 @@ _FSM_ instances leverage [`Finitomata`](https://hexdocs.pm/finitomata)
 library, which should be used alone if no recurrent `perform` should be
 accomplished _or_ if the instances are not uniform.
 
-Typical code for the `Siblings.Worker` implementation would be as follows
+Typical code for the `Siblings.Worker` implementation would be as follows:
 
 ```elixir
 defmodule MyApp.Worker do
@@ -69,7 +69,7 @@ defmodule MyApp.Worker do
 end
 ```
 
-Now it can be used as shown below
+Now it can be used as shown below:
 
 ```elixir
 {:ok, pid} = Siblings.start_link()
